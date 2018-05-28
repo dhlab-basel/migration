@@ -55,6 +55,26 @@ $GLOBALS['password'] = 'test';
  * - :UriValue
  * - :IntervalValue
  * - :ListValue
+ *
+ * GUI elements
+ *
+ * - :Colorpicker
+ * - :Date
+ * - :Geometry
+ * - :Geonames
+ * - :Interval
+ * - :List
+ * - :Pulldown
+ * - :Radio
+ * - :Richtext
+ * - :Searchbox
+ * - :SimpleText
+ * - :Slider
+ * - :Spinbox
+ * - :Textarea
+ * - :Checkbox
+ * - :Fileupload
+ *
  */
 function process_attributes($node) {
     $element = array();
