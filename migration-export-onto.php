@@ -30,7 +30,7 @@ function get_projects() {
 //=============================================================================
 
 function get_project($shortname) {
-    $cid = curl_init('http://data.dasch.swiss/api/projects/' . $shortname);
+    $cid = curl_init('http://data.dasch.swiss/api/projects/' . $shortname . '?lang=all');
     curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($cid, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
     curl_setopt($cid, CURLOPT_KEYPASSWD, $GLOBALS['username'].':'.$GLOBALS['password']);
@@ -173,7 +173,14 @@ $xml->startElement('project');
 $xml->writeAttribute('id', $project->id);
 $xml->writeAttribute('name', $project->shortname);
 $xml->writeElement('longname', $project->longname);
-$xml->writeElement('description', $project->description);
+if (isset($project->description)) {
+    if (is_array($project->description)) {
+
+    }
+    else {
+        $xml->writeElement('description', $project->description);
+    }
+}
 if (isset($project->url) and !empty($project->url)) {
     $xml->writeElement('url', $project->url);
 }

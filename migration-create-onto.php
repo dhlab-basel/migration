@@ -192,7 +192,7 @@ function knora_delete($apiurl, $iri, array $options = NULL) {
 
 
 
-function class_struct($ontology_iri,
+function create_class_struct($ontology_iri,
                       $onto_name,
                       $last_onto_date,
                       $class_name,
@@ -250,7 +250,7 @@ function class_struct($ontology_iri,
 }
 //=============================================================================
 
-function property_struct($ontology_iri,
+function create_property_struct($ontology_iri,
                          $onto_name,
                          $last_onto_date,
                          $prop_name,
@@ -328,6 +328,34 @@ function property_struct($ontology_iri,
 //=============================================================================
 
 
+function create_project_struct($id, $shortname, $longname, array $descriptions, array $keywords, $logo) {
+    $shortcode = sprintf('%04x', $id);
+
+    $tmp_descriptions = array();
+    foreach ($descriptions as $lang => $description) {
+        $tmp_labels[] = (object) array (
+            'language' => $lang,
+            'value' => $description
+        );
+    }
+    $descriptions = $tmp_descriptions;
+
+    $project_iri = 'http://rdfh.ch/projects/' . sprintf('%04x', $id);
+
+    $project = (object) array (
+        'shortname' => $shortname,
+        'shortcode' => $shortcode,
+        'longname' => $longname,
+        'description' => $descriptions,
+        'keywords' => $keywords,
+        'logo' => $logo,
+        'status' => TRUE,
+        'selfjoin' => FALSE
+    );
+    return $project;
+}
+//=============================================================================
+
 function process_restype_node($project_iri, DOMnode $node) {
 
 }
@@ -391,14 +419,15 @@ function process_project_node(DOMnode $node) {
 
     $project_iri = 'http://rdfh.ch/projects/' . sprintf('%04x', $attributes['id']);
 
-    $project = new stdClass();
-    $project->shortname = $attributes['name'];
-    $project->shortcode = sprintf('%04x', $attributes['id']);
-    $project->keywords = array();
+    $shortname = $attributes['name'];
+    $shortcode = sprintf('%04x', $attributes['id']);
+
+    $descriptions = array();
+    $keywords = array();
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
         switch($subnode->nodeName) {
-            case 'longname': $project->longname = $subnode->nodeValue; break;
+            case 'longname': $longname = $subnode->nodeValue; break;
             case 'description': {
                 $project->description = array();
                 $desc = new stdClass();
