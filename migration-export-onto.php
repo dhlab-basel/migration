@@ -104,6 +104,7 @@ function get_resourcetype($restype_id) {
 }
 //=============================================================================
 
+
 function write_comment(XMLWriter $xml, $string) {
     $xml->startComment();
     $xml->setIndent(FALSE);
@@ -119,8 +120,8 @@ function write_comment(XMLWriter $xml, $string) {
     $xml->setIndent(TRUE);
     $xml->endComment();
 }
-
 //=============================================================================
+
 
 $project_name = NULL;
 $outfile = NULL;
@@ -130,6 +131,7 @@ function print_usage() {
     echo '  -project project-name: dump data from given project.', PHP_EOL;
     echo PHP_EOL;
 }
+//=============================================================================
 
 
 for ($i = 1; $i < $_SERVER['argc']; $i++) {
@@ -171,11 +173,20 @@ $xml->endComment();
 $project = get_project($project_name);
 $xml->startElement('project');
 $xml->writeAttribute('id', $project->id);
-$xml->writeAttribute('name', $project->shortname);
+$xml->writeAttribute('shortname', $project->shortname);
 $xml->writeElement('longname', $project->longname);
+
+//
+// write project description(s) [in all languages]
+//
 if (isset($project->description)) {
     if (is_array($project->description)) {
-
+        foreach ($project->description as $descobj) {
+            $xml->startElement('description');
+            $xml->writeAttribute('lang', $descobj->shortname);
+            $xml->text($descobj->description);
+            $xml->endElement(); // description
+        }
     }
     else {
         $xml->writeElement('description', $project->description);
@@ -217,7 +228,10 @@ foreach ($vocabularies as $vocabulary) {
     foreach ($restypes as $restype) {
         $restype_info = get_resourcetype($restype->id);
         $xml->startElement('restype');
-        $xml->writeAttribute('name', $restype_info->name);
+
+        list($salsah_voc, $restype_name) = explode(':', $restype_info->name);
+        $xml->writeAttribute('name', $restype_name);
+        $xml->writeAttribute('type', $restype_info->class);
         if (isset($restype_info->label) and is_array($restype_info->label)) {
             foreach ($restype_info->label as $label) {
                 $xml->startElement('label');
@@ -225,7 +239,6 @@ foreach ($vocabularies as $vocabulary) {
                 $xml->text($label->label);
                 $xml->endElement(); // label
             }
-
         }
         if (isset($restype_info->description) and is_array($restype_info->description)) {
             foreach ($restype_info->description as $description) {

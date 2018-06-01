@@ -100,6 +100,7 @@ function knora_post_data($apiurl, $data) {
     curl_setopt($cid, CURLOPT_HTTPHEADER, array('Content-Type: application/json; charset=UTF-8'));
     curl_setopt($cid, CURLOPT_POSTFIELDS, $datastr);
     $jsonstr = curl_exec($cid);
+
     curl_close($cid);
     if (($result = json_decode($jsonstr)) === null) {
         echo 'JSON ERROR CODE = ', json_last_error(), PHP_EOL;
@@ -160,16 +161,20 @@ function knora_get($apiurl, $iri) {
 //=============================================================================
 
 function knora_delete($apiurl, $iri, array $options = NULL) {
-    echo 'DELETE ', $apiurl, '/', $iri, PHP_EOL;
 
+    $debug_url = $apiurl. '/' . $iri;
     $url = $apiurl . '/' . urlencode($iri);
     if (!is_null($options)) {
         $sep = '?';
         foreach ($options as $key => $val) {
+            $debug_url .= $sep . $key . '=' . $val;
             $url .= $sep . $key . '=' . urlencode($val);
             $sep = '&';
         }
     }
+
+    echo 'DELETE ', $debug_url, PHP_EOL;
+    echo $url, PHP_EOL;
 
     $cid = curl_init($url);
     curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
@@ -191,15 +196,22 @@ function knora_delete($apiurl, $iri, array $options = NULL) {
 //=============================================================================
 
 
+function die_on_api_error($result, $line) {
+    if (isset($result->error)) {
+        echo 'ERROR in "knora API" at line: ', $line, PHP_EOL, $result->error, PHP_EOL;
+        die(-1);
+    }
+}
+//=============================================================================
 
-function create_class_struct($ontology_iri,
-                      $onto_name,
-                      $last_onto_date,
-                      $class_name,
-                      $super_class,
-                      array $labels,
-                      array $comments
-
+function create_resclass_struct (
+    $ontology_iri,
+    $onto_name,
+    $last_onto_date,
+    $class_name,
+    $super_class,
+    array $labels,
+    array $comments
 ) {
     $tmp_labels = array();
     foreach ($labels as $lang => $label) {
@@ -220,21 +232,19 @@ function create_class_struct($ontology_iri,
     $comments = $tmp_comments;
 
     $class = (object) array (
-        'knora-api:hasOntologies' => (object) array (
-            '@id' => $ontology_iri,
-            '@type' => 'owl:Ontology',
-            'knora-api:hasClasses' => array(
-                $onto_name . ':' . $class_name => array(
-                    '@id' => $onto_name . ':' . $class_name,
-                    '@type' => 'owl:Class',
-                    'rdfs:label' => $labels,
-                    'rdfs:comment' => $comments,
-                    'rdfs:subClassOf' => array(
-                        '@id' => $super_class
-                    )
+        '@id' => $ontology_iri,
+        '@type' => 'owl:Ontology',
+        'knora-api:lastModificationDate' => $last_onto_date,
+        '@graph' => array(
+            (object) array(
+                '@id' => $onto_name . ':' . $class_name,
+                '@type' => 'owl:Class',
+                'rdfs:label' => $labels,
+                'rdfs:comment' => $comments,
+                'rdfs:subClassOf' => (object) array(
+                    '@id' => $super_class
                 )
-            ),
-            'knora-api:lastModificationDate' => $last_onto_date,
+            )
         ),
         '@context' => array(
             "rdf" => "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -250,17 +260,19 @@ function create_class_struct($ontology_iri,
 }
 //=============================================================================
 
-function create_property_struct($ontology_iri,
-                         $onto_name,
-                         $last_onto_date,
-                         $prop_name,
-                         array $super_props,
-                         $subject,
-                         $object,
-                         array $labels,
-                         array $comments,
-                         $gui_element,
-                         array $gui_attributes
+
+function create_property_struct (
+    $ontology_iri,
+    $onto_name,
+    $last_onto_date,
+    $prop_name,
+    array $super_props,
+    $subject,
+    $object,
+    array $labels,
+    array $comments,
+    $gui_element,
+    array $gui_attributes
 
 ) {
     $tmp_labels = array();
@@ -285,7 +297,7 @@ function create_property_struct($ontology_iri,
     foreach ($super_props as $super_prop) {
         $tmp_super_props[] = (object) array (
             '@id' => $super_prop
-        )
+        );
     }
     $super_props = $tmp_super_props;
 
@@ -328,19 +340,47 @@ function create_property_struct($ontology_iri,
 //=============================================================================
 
 
-function create_project_struct($id, $shortname, $longname, array $descriptions, array $keywords, $logo) {
-    $shortcode = sprintf('%04x', $id);
+function create_ontology_struct ($name, $project_iri) {
+    /* Docu from scala test
+    {
+        "knora-api:ontologyName": "foo",
+        "knora-api:attachedToProject": {
+            "@id": "$imagesProjectIri"
+        },
+        "rdfs:label": "$label",
+        "@context": {
+            "rdfs": "${OntologyConstants.Rdfs.RdfsPrefixExpansion}",
+            "knora-api": "${OntologyConstants.KnoraApiV2WithValueObjects.KnoraApiV2PrefixExpansion}"
+        }
+    }
+    */
+    $ontology = (object) array(
+        'knora-api:ontologyName' => $name,
+        'knora-api:attachedToProject' => (object) array(
+            '@id' => $project_iri,
+        ),
+        'rdfs:label' => $name,
+        '@context' => (object) array(
+            'rdfs' => 'http://www.w3.org/2000/01/rdf-schema#',
+            'knora-api' => 'http://api.knora.org/ontology/knora-api/v2#'
+        )
+    );
+    return $ontology;
+}
+//=============================================================================
 
+
+function create_project_struct($shortcode, $shortname, $longname, array $descriptions, array $keywords, $logo) {
     $tmp_descriptions = array();
-    foreach ($descriptions as $lang => $description) {
-        $tmp_labels[] = (object) array (
-            'language' => $lang,
-            'value' => $description
+    foreach ($descriptions as $description) {
+        $tmp_descriptions[] = (object) array (
+            'language' => $description->language,
+            'value' => $description->value
         );
     }
     $descriptions = $tmp_descriptions;
 
-    $project_iri = 'http://rdfh.ch/projects/' . sprintf('%04x', $id);
+    //$project_iri = 'http://rdfh.ch/projects/' . sprintf('%04x', $id);
 
     $project = (object) array (
         'shortname' => $shortname,
@@ -356,102 +396,171 @@ function create_project_struct($id, $shortname, $longname, array $descriptions, 
 }
 //=============================================================================
 
-function process_restype_node($project_iri, DOMnode $node) {
-
-}
-//=============================================================================
-
-
-function process_vocabulary_node($project_iri, DOMnode $node) {
-    $restype_nodes = array();
+function process_resclass_node(
+    $project_iri,
+    $ontology_iri,
+    $onto_name,
+    $last_onto_date,
+    DOMnode $node
+) {
     $attributes = process_attributes($node);
 
-    $result = knora_get($GLOBALS['server'] . '/v2/ontologies/metadata', $project_iri);
-    if ($result->{'knora-api:hasOntologies'}->{'rdfs:label'} == $attributes['name']) {
-        $ontology_iri = $result->{'knora-api:hasOntologies'}->{'@id'};
-        $ontology_moddate = $result->{'knora-api:hasOntologies'}->{'knora-api:lastModificationDate'};
-        echo 'Ontology already exists:', $ontology_iri, PHP_EOL;
-        $result = knora_delete($GLOBALS['server'] . '/v2/ontologies',
-            $ontology_iri,
-            array('lastModificationDate' => $ontology_moddate));
-        print_r($result);
-    }
-    $result = knora_get($GLOBALS['server'] . '/v2/ontologies/metadata', $project_iri);
-    print_r($result);
+    $properties = array();
+    $labels = array();
+    $comments = array();
+    $class_name = $attributes['name'];
+    $superclass = NULL;
 
-    $ontology = array();
-    $ontology['knora-api:ontologyName'] = $attributes['name'];
-    $p = array(
-        '@id' => $project_iri
-    );
-    $ontology['knora-api:attachedToProject'] = $p;
-    $ontology['rdfs:label'] = $attributes['name'];
-    $jsonld = array(
-        'rdfs' => 'http://www.w3.org/2000/01/rdf-schema#',
-        'knora-api' => 'http://api.knora.org/ontology/knora-api/v2#'
-    );
-    $ontology['@context'] = $jsonld;
+    switch ($attributes['type']) {
+        case 'object': $super_class = 'knora-api:Resource'; break;
+        case 'textobject': $super_class = 'knora-api:TextRepresentation'; break;
+        case 'image' : $super_class = 'knora-api:StillImageRepresentation'; break;
+        case 'sound': $super_class = 'knora-api:AudioRepresentation'; break;
+        case 'movie': $super_class = 'knora-api:MovingImageRepresentation'; break;
+        case 'region'; $super_class = 'knora-api:Region'; break;
+        default: $super_class = 'knora-api:Resource';
+    }
+
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
         switch($subnode->nodeName) {
-            case 'restype': {
-                array_push($restype_nodes, $subnode); break;
+            case 'label': {
+                $subattributes = process_attributes($subnode);
+                $labels[$subattributes['lang']] = $subnode->nodeValue;
+                break;
             }
+            case 'description': {
+                $subattributes = process_attributes($subnode);
+                $comments[$subattributes['lang']] = $subnode->nodeValue;
+                break;
+            }
+            case 'iconsrc': break; // does not exist in API???
+            case 'property': array_push($properties, $subnode); break;
         }
     }
 
-    $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies', $ontology);
+    $resclass = create_resclass_struct (
+        $ontology_iri,
+        $onto_name,
+        $last_onto_date,
+        $class_name,
+        $super_class,
+        $labels,
+        $comments
+    );
 
-    $ontology_info = new stdClass();
-    $ontology_info->iri = $result->{'knora-api:hasOntologies'}->{'@id'};
-    $ontology_info->mod_date = $result->{'knora-api:hasOntologies'}->{'knora-api:lastModificationDate'};
+    $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/classes', $resclass);
+    echo '----------------------------------------------------------', PHP_EOL;
+    print_r($result);
+    echo '==========================================================', PHP_EOL;
+    die_on_api_error($result, __LINE__);
+    $last_onto_date = $result->{'knora-api:lastModificationDate'};
+
+    return $last_onto_date;
+}
+//=============================================================================
+
+
+function process_ontology_node($project_iri, DOMnode $node) {
+    $restype_nodes = array();
+    $attributes = process_attributes($node);
+    $onto_name = $attributes['name'];
+
+    $result = knora_get($GLOBALS['server'] . '/v2/ontologies/metadata', $project_iri);
+
+    if ($result->{'rdfs:label'} == $attributes['name']) {
+        $ontology_iri = $result->{'@id'};
+        $ontology_moddate = $result->{'knora-api:lastModificationDate'};
+        echo 'Ontology already exists:', $ontology_iri, PHP_EOL;
+
+        $result = knora_delete(
+            $GLOBALS['server'] . '/v2/ontologies',
+            $ontology_iri,
+            array('lastModificationDate' => $ontology_moddate)
+        );
+        die_on_api_error($result, __LINE__);
+
+    }
+
+    $ontology = create_ontology_struct ($onto_name, $project_iri);
+
+    $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies', $ontology);
+    die_on_api_error($result, __LINE__);
+
+    $ontology_iri = $result->{'@id'};
+    $ontology_moddate = $result->{'knora-api:lastModificationDate'};
+
+
+    $restype_nodes = array();
+
+    for ($i = 0; $i < $node->childNodes->length; $i++) {
+        $subnode = $node->childNodes->item($i);
+        switch($subnode->nodeName) {
+            case 'longname': break; // we do nothing with the long vocabuklary/ontology name
+            case 'uri': break; // we ignore this "fake" uri...
+            case 'restype': array_push($restype_nodes, $subnode); break;
+            default: ;
+        }
+    }
 
     foreach ($restype_nodes as $restype_node) {
-        process_restype($project_iri, $ontology_info, $restype_node);
+        $ontology_moddate = process_resclass_node(
+            $project_iri,
+            $ontology_iri,
+            $onto_name,
+            $ontology_moddate,
+            $restype_node
+        );
     }
 }
 //=============================================================================
 
 function process_project_node(DOMnode $node) {
-    $vocabulary_nodes = array();
     $attributes = process_attributes($node);
-
-    $project_iri = 'http://rdfh.ch/projects/' . sprintf('%04x', $attributes['id']);
-
-    $shortname = $attributes['name'];
+    $shortname = $attributes['shortname'];
     $shortcode = sprintf('%04x', $attributes['id']);
+    $shortcode = '1010';
+
+    $vocabulary_nodes = array();
+    $project_iri = 'http://rdfh.ch/projects/' . $shortcode;
+
 
     $descriptions = array();
     $keywords = array();
+    $logo = NULL;
+    $longname = NULL;
+
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
         switch($subnode->nodeName) {
             case 'longname': $longname = $subnode->nodeValue; break;
             case 'description': {
-                $project->description = array();
+                $subattributes = process_attributes($subnode);
                 $desc = new stdClass();
                 $desc->value = $subnode->nodeValue;
-                $desc->language = 'de';
-                $project->description[] = $desc;
+                $desc->language = $subattributes['lang'];
+                $descriptions[] = $desc;
                 break;
             }
-            case 'keywords': $project->keywords[] = $subnode->nodeValue; break;
-            case 'iconsrc' : $project->logo = $subnode->nodeValue; break;
+            case 'keywords': $keywords[] = trim($subnode->nodeValue); break;
+            case 'iconsrc' : $logo = $subnode->nodeValue; break;
             case 'vocabulary': array_push($vocabulary_nodes, $subnode); break;
         }
     }
-    $project->status = TRUE;
-    $project->selfjoin = FALSE;
+
+    $project = create_project_struct($shortcode, $shortname, $longname, $descriptions, $keywords, $logo);
 
     $result = knora_get($GLOBALS['server'] . '/admin/projects', $project_iri);
     if (isset($result->error)) {
         $result = knora_post_data($GLOBALS['server'] . '/admin/projects', $project);
+        die_on_api_error($result, __LINE__);
         $project_iri = $result->project->id;
     }
     else {
         unset($project->shortcode); // we don't need this for PUT
         $result = knora_put_data($GLOBALS['server'] . '/admin/projects', $project_iri, $project);
+        die_on_api_error($result, __LINE__);
         $project_iri = $result->project->id;
     }
 
@@ -459,7 +568,7 @@ function process_project_node(DOMnode $node) {
     // now process all vocabularies
     //
     foreach ($vocabulary_nodes as $vocabulary_node) {
-        process_vocabulary_node($project_iri, $vocabulary_node);
+        process_ontology_node($project_iri, $vocabulary_node);
     }
 
 }
