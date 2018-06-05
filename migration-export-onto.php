@@ -150,6 +150,11 @@ for ($i = 1; $i < $_SERVER['argc']; $i++) {
     }
 }
 
+if (is_null($project_name) || is_null($outfile)) {
+    print_usage();
+    die();
+}
+
 
 $xml = new XMLWriter();
 $xml->openURI($outfile);
@@ -271,8 +276,19 @@ foreach ($vocabularies as $vocabulary) {
                     $xml->endElement(); // label
                 }
             }
-            $xml->writeElement('valtype', $property->vt_value_field);
+            $xml->writeElement('valtype', $property->vt_php_constant);
             $xml->writeElement('occurrence', $property->occurrence);
+            if ($property->vt_php_constant == 'VALTYPE_RESPTR') {
+                $attrs = explode(';', $property->attributes);
+                foreach ($attrs as $attr) {
+                    $tmp = explode('=', $attr);
+                    if ($tmp[0] == 'restypeid') {
+                        $tmp_restype = get_resourcetype($tmp[1]);
+                        $xml->writeElement('resptr', $tmp_restype->name);
+                    }
+                }
+
+            }
             $xml->writeElement('attributes', $property->attributes);
             $xml->writeElement('gui_element', $property->gui_name);
             $xml->writeElement('gui_attributes', $property->gui_attributes);
