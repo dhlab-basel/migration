@@ -453,11 +453,12 @@ function process_property_node(
         }
         case 'VALTYPE_INTEGER': {
             $super_props[] = 'knora-api:hasValue';
+            $object = 'knora-base:IntValue';
             break;
         }
         case 'VALTYPE_FLOAT': {
             $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-base:IntValue';
+            $object = 'knora-base:DecimalValue';
             break;
         }
         case 'VALTYPE_DATE': {
@@ -485,6 +486,7 @@ function process_property_node(
         }
         case 'VALTYPE_INTERVAL' : {
             $super_props[] = 'knora-api:hasValue';
+            $super_props[] = 'knora-api:IntervalValue';
             break;
         }
         case 'VALTYPE_GEOMETRY' : {
