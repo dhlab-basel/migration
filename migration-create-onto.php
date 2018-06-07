@@ -407,12 +407,16 @@ function process_property_node(
 ) {
     $attributes = process_attributes($node);
 
+    $prop_voc = $attributes['vocabulary'];
+    $prop_name = $attributes['name'];
+
     $labels = array();
     $valtype = NULL;
     $occurrence = NULL;
     $attrs = array();
     $gui_element = NULL;
     $gui_attrs = array();
+    $resptr = NULL;
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
@@ -442,82 +446,291 @@ function process_property_node(
                 $gui_attrs = explode(';', $subnode->nodeValue);
                 break;
             }
+            case 'resptr': {
+                $resptr = $subnode->nodeValue;
+                break;
+            }
         }
     }
 
-    switch ($valtype) {
-        case 'VALTYPE_TEXT': {
-            $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-api:TextValue';
-            break;
-        }
-        case 'VALTYPE_INTEGER': {
-            $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-base:IntValue';
-            break;
-        }
-        case 'VALTYPE_FLOAT': {
-            $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-base:DecimalValue';
-            break;
-        }
-        case 'VALTYPE_DATE': {
-            $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-base:DateValue';
-            break;
-        }
-        case 'VALTYPE_PERIOD': {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        case 'VALTYPE_RESPTR': {
-            $super_props[] = 'knora-api:hasLinkToValue';
-            $object = 'knora-base:LinkValue';
-            break;
-        }
-        case 'VALTYPE_SELECTION' : {
-            $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-base:ListValue';
-            break;
-        }
-        case 'VALTYPE_TIME' : {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        case 'VALTYPE_INTERVAL' : {
-            $super_props[] = 'knora-api:hasValue';
-            $super_props[] = 'knora-api:IntervalValue';
-            break;
-        }
-        case 'VALTYPE_GEOMETRY' : {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        case 'VALTYPE_COLOR' : {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        case 'VALTYPE_HLIST' : {
-            $super_props[] = 'knora-api:hasValue';
-            $object = 'knora-base:ListValue';
-            break;
-        }
-        case 'VALTYPE_ICONCLASS' : {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        case 'VALTYPE_RICHTEXT' : {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        case 'VALTYPE_GEONAME' : {
-            $super_props[] = 'knora-api:hasValue';
-            break;
-        }
-        default: {
-            $super_props[] = 'knora-api:hasValue';
+    $object = NULL;
+    if (($prop_voc == 'salsah') && ($prop_voc == 'dc')) {
+        if ($prop_voc == 'salsah') {
+            switch ($prop_name) {
+                case 'uri': {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:UriValue';
+                    break;
+                }
+                case 'lastname':
+                case 'firstname':
+                case 'institution':
+                case 'address':
+                case 'city':
+                case 'zipcode':
+                case 'phone':
+                case 'fax':
+                case 'email':
+                case 'comment':
+                case 'comment_rt':
+                case 'origname':
+                case 'institution':
+                case 'keyword':
+                case 'label':
+                        {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+                case 'part_of': {
+                    $super_props[] = 'knora-api:isPartOf';
+                    $object = is_null($resptr) ? 'knora-api:Resource'; // $resptr may be NULL !!
+                    break;
+                }
+                case 'region_of': {
+                    $super_props[] = 'knora-api:isRegionOf';
+                    $object = is_null($resptr) ? 'knora-api:Representation' : $resptr; // $resptr may be NULL !!
+                    break;
+                }
+                case 'seqnum': {
+                    $super_props[] = 'knora-api:seqnum';
+                    $object = 'knora-base:IntValue';
+                    break;
+                }
+                case 'transcription': {
+                    // SHOULD NOT OCCUR!!
+                    break;
+                }
+                case 'canton': {
+                    // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    break;
+                }
+                case 'color': {
+                    $super_props[] = 'knora-api:hasColor';
+                    $object = 'knora-api:ColorValue';
+                    break;
+                }
+                case 'external_id': {
+                    // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    break;
+                }
+                case 'external_provider': {
+                    // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    break;
+                }
+                case 'geography': {
+                    // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    break;
+                }
+                case 'geometry': {
+                    $super_props[] = 'knora-api:hasGeometry';
+                    $object = 'knora-api:GeometryValue';
+                }
+            }
         }
     }
+    else if ($prop_voc == 'dc') {
+        switch ($prop_name) {
+            case 'author':
+                {
+                    $super_props[] = array('dcterms:author', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'contributor':
+                {
+                    $super_props[] = array('dcterms:contributor', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'coverage':
+                {
+                    $super_props[] = array('dcterms:coverage', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'creator':
+                {
+                    $super_props[] = array('dcterms:creator', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'date':
+                {
+                    $super_props[] = array('dcterms:date', 'knora-api:hasValue');
+                    $object = 'knora-base:DateValue';
+                    break;
+                }
+            case 'description':
+            case 'description_rt':
+                {
+                    $super_props[] = array('dcterms:creator', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'format':
+                {
+                    $super_props[] = array('dcterms:format', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'identifier':
+                {
+                    $super_props[] = array('dcterms:identifier', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'language':
+                {
+                    $super_props[] = array('dcterms:language', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'publisher':
+                {
+                    $super_props[] = array('dcterms:publisher', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'relation':
+                {
+                    $super_props[] = array('dcterms:relation', 'knora-api:hasValue');
+                    $object = is_null($resptr) ? 'knora-api:Resource'; // $resptr may be NULL !!
+                    break;
+                }
+            case 'rights':
+                {
+                    $super_props[] = array('dcterms:rights', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'source':
+            case 'source_rt':
+                {
+                    $super_props[] = array('dcterms:source', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'subject':
+                {
+                    $super_props[] = array('dcterms:subject', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'title':
+                {
+                    $super_props[] = array('dcterms:title', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'type':
+                {
+                    $super_props[] = array('dcterms:type', 'knora-api:hasValue');
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            default:
+                {
+                    // TODO: ERROR MESSAGE !!!!!!!!!!!!
+                }
+        }
+    }
+    else if ($prop_voc == $onto_name) {
+        switch ($valtype) {
+            case 'VALTYPE_TEXT':
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+            case 'VALTYPE_INTEGER':
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-base:IntValue';
+                    break;
+                }
+            case 'VALTYPE_FLOAT':
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-base:DecimalValue';
+                    break;
+                }
+            case 'VALTYPE_DATE':
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-base:DateValue';
+                    break;
+                }
+            case 'VALTYPE_PERIOD':
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-base:DateValue';
+                    break;
+                }
+            case 'VALTYPE_RESPTR':
+                {
+                    $super_props[] = 'knora-api:hasLinkTo';
+                    $object = $resptr;
+                    break;
+                }
+            case 'VALTYPE_SELECTION' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-base:ListValue';
+                    break;
+                }
+            case 'VALTYPE_TIME' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    break;
+                }
+            case 'VALTYPE_INTERVAL' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $super_props[] = 'knora-api:IntervalValue';
+                    break;
+                }
+            case 'VALTYPE_GEOMETRY' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    break;
+                }
+            case 'VALTYPE_COLOR' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    break;
+                }
+            case 'VALTYPE_HLIST' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-base:ListValue';
+                    break;
+                }
+            case 'VALTYPE_ICONCLASS' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    break;
+                }
+            case 'VALTYPE_RICHTEXT' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    break;
+                }
+            case 'VALTYPE_GEONAME' :
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                    break;
+                }
+            default:
+                {
+                    $super_props[] = 'knora-api:hasValue';
+                }
+        }
+    }
+    else {
+        // TODO: ERROR MESSAGE !!!!!!!!!!!!
+    }
+    
 
     $subject = $onto_name . ':' . $subject_name;
     create_property_struct (
