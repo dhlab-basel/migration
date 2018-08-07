@@ -397,6 +397,36 @@ function create_project_struct($shortcode, $shortname, $longname, array $descrip
 }
 //=============================================================================
 
+function create_list_struct($name, $project_iri, array $labels, array $comments) {
+    $tmp_labels = array();
+    foreach ($labels as $label) {
+        $tmp_labels[] = (object) array (
+            'language' => $label->language,
+            'value' => $label->value
+        );
+    }
+    $labels = $tmp_labels;
+
+    $tmp_comments = array();
+    foreach ($commentss as $comment) {
+        $tmp_comments[] = (object) array (
+            'language' => $comment->language,
+            'value' => $comment->value
+        );
+    }
+    $comments = $tmp_comments;
+
+    $list = (object) array(
+        'projectIri' => $project_iri,
+        'labels' => $labels,
+        'comments' => $comments
+    );
+
+    return $list;
+
+}
+//=============================================================================
+
 
 function process_property_node(
     $ontology_iri,
@@ -730,7 +760,7 @@ function process_property_node(
     else {
         // TODO: ERROR MESSAGE !!!!!!!!!!!!
     }
-    
+
 
     $subject = $onto_name . ':' . $subject_name;
     create_property_struct (

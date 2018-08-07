@@ -84,7 +84,68 @@ function get_resourcetypes_of_vocabulary($vocabulary_id) {
     $data = json_decode($jsonstr);
 
     return $data->resourcetypes;
+}
+//=============================================================================
 
+function get_selections_of_vocabulary($vocabulary_id) {
+    $cid = curl_init('http://data.dasch.swiss/api/selections?vocabulary=' . $vocabulary_id . '&lang=all');
+    curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($cid, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_setopt($cid, CURLOPT_KEYPASSWD, $GLOBALS['username'].':'.$GLOBALS['password']);
+    if (($jsonstr = curl_exec($cid)) === false) {
+        die('curl_exec failed in get_selections_of_vocabulary() !'.PHP_EOL);
+    }
+    curl_close($cid);
+    $data = json_decode($jsonstr);
+
+    return $data->selections;
+}
+//=============================================================================
+
+function get_selection_by_id($selection_id) {
+    $cid = curl_init('http://data.dasch.swiss/api/selections/' . $selection_id . '?lang=all');
+    curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($cid, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_setopt($cid, CURLOPT_KEYPASSWD, $GLOBALS['username'].':'.$GLOBALS['password']);
+    if (($jsonstr = curl_exec($cid)) === false) {
+        die('curl_exec failed in get_selections_by_id() !'.PHP_EOL);
+    }
+    curl_close($cid);
+
+    $data = json_decode($jsonstr);
+
+    return $data->selection;
+}
+//=============================================================================
+
+function get_hlists_of_vocabulary($vocabulary_id) {
+    $cid = curl_init('http://data.dasch.swiss/api/hlists?vocabulary=' . $vocabulary_id . '&lang=all');
+    curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($cid, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_setopt($cid, CURLOPT_KEYPASSWD, $GLOBALS['username'].':'.$GLOBALS['password']);
+    if (($jsonstr = curl_exec($cid)) === false) {
+        die('curl_exec failed in get_hlists_of_vocabulary() !'.PHP_EOL);
+    }
+    curl_close($cid);
+    $data = json_decode($jsonstr);
+
+    return $data->hlists;
+}
+//=============================================================================
+
+function get_hlist_by_id($selection_id) {
+    $cid = curl_init('http://data.dasch.swiss/api/hlists/' . $selection_id . '?lang=all');
+    curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($cid, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+    curl_setopt($cid, CURLOPT_KEYPASSWD, $GLOBALS['username'].':'.$GLOBALS['password']);
+    if (($jsonstr = curl_exec($cid)) === false) {
+        die('curl_exec failed in get_hlists_by_id() !'.PHP_EOL);
+    }
+    curl_close($cid);
+
+    $data = json_decode($jsonstr);
+
+    return $data->hlist;
 }
 //=============================================================================
 
@@ -100,7 +161,6 @@ function get_resourcetype($restype_id) {
     $data = json_decode($jsonstr);
 
     return $data->restype_info;
-
 }
 //=============================================================================
 
@@ -225,6 +285,81 @@ foreach ($vocabularies as $vocabulary) {
     if (isset($vocabulary->uri) and !empty($vocabulary->uri)) {
         $xml->writeElement('uri', $vocabulary->uri);
     }
+
+    //
+    // get all selections (flat lists)
+    //
+    $selections = get_selections_of_vocabulary($vocabulary->id);
+    foreach ($selections as $selection) {
+        $xml->startElement('selection');
+        $xml->writeAttribute('id', $selection->id);
+        $xml->writeAttribute('name', $selection->name);
+        if (isset($selection->label) and is_array($selection->label)) {
+            foreach ($selection->label as $label) {
+                $xml->startElement('label');
+                $xml->writeAttribute('lang', $label->shortname);
+                $xml->text($label->label);
+                $xml->endElement(); // label
+            }
+        }
+        if (isset($selection->description) and is_array($selection->description)) {
+            foreach ($selection->description as $description) {
+                $xml->startElement('description');
+                $xml->writeAttribute('lang', $description->shortname);
+                $xml->text($description->description);
+                $xml->endElement(); // description
+            }
+        }
+        $xml->startElement('nodes');
+        $selection_nodes = get_selection_by_id($selection->id);
+        foreach ($selection_nodes as $selection_node) {
+
+            $xml->startElement('node');
+            $xml->writeAttribute('id', $selection_node->id);
+            $xml->writeAttribute('name', $selection_node->name);
+            if (isset($selection_node->label) and is_object($selection_node->label)) {
+                foreach ((array) $selection_node->label as $lang => $value) {
+                    $xml->startElement('label');
+                    $xml->writeAttribute('lang', $lang);
+                    $xml->text($value);
+                    $xml->endElement(); // label
+                }
+            }
+            $xml->endElement(); // node
+        }
+        $xml->endElement(); // nodes
+        $xml->endElement(); // selection
+    }
+
+    //
+    // get all hierarchies
+    //
+    $hlists = get_hlists_of_vocabulary($vocabulary->id);
+    foreach ($hlists as $hlist) {
+        $xml->startElement('hlist');
+        $xml->writeAttribute('id', $hlist->id);
+        $xml->writeAttribute('name', $hlist->name);
+        if (isset($hlist->label) and is_array($hlist->label)) {
+            foreach ($hlist->label as $label) {
+                $xml->startElement('label');
+                $xml->writeAttribute('lang', $label->shortname);
+                $xml->text($label->label);
+                $xml->endElement(); // label
+            }
+        }
+        if (isset($hlist->description) and is_array($hlist->description)) {
+            foreach ($hlist->description as $description) {
+                $xml->startElement('description');
+                $xml->writeAttribute('lang', $description->shortname);
+                $xml->text($description->description);
+                $xml->endElement(); // description
+            }
+        }
+        $hlist_nodes = get_hlist_by_id($hlist->id);
+        print_r($hlist_nodes);
+        $xml->endElement(); // hlist
+    }
+
 
     //
     // get all restypes
