@@ -195,6 +195,25 @@ function print_usage() {
 
 
 function write_hlist_level(&$xml, $nodelist) {
+    foreach ($nodelist as $node) {
+        $xml->startElement('node');
+        $xml->writeAttribute('id', $node->id);
+        $xml->writeAttribute('name', $node->name);
+        if (isset($node->label) and is_array($node->label)) {
+            foreach ((array) $node->label as $label) {
+                $xml->startElement('label');
+                $xml->writeAttribute('lang', $label->shortname);
+                $xml->text($label->label);
+                $xml->endElement(); // label
+            }
+        }
+        if (isset($node->children) and is_array($node->children)) {
+            $xml->startElement('subnodes');
+            write_hlist_level($xml, $node->children);
+            $xml->endElement(); // subnodes
+        }
+        $xml->endElement(); // node
+    }
 
 }
 //=============================================================================
@@ -362,6 +381,7 @@ foreach ($vocabularies as $vocabulary) {
             }
         }
         $hlist_nodes = get_hlist_by_id($hlist->id);
+        write_hlist_level($xml, $hlist_nodes);
         print_r($hlist_nodes);
         $xml->endElement(); // hlist
     }
