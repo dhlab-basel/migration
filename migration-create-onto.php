@@ -10,6 +10,7 @@
 $GLOBALS['username'] = 'root@example.com';
 $GLOBALS['password'] = 'test';
 
+$GLOBALS['lists'] = array();
 /*
  * Properties in knora-base:
  *
@@ -175,6 +176,7 @@ function knora_delete($apiurl, $iri, array $options = NULL) {
 
     echo 'DELETE ', $debug_url, PHP_EOL;
     echo $url, PHP_EOL;
+    echo 'IRI=', $iri, PHP_EOL;
 
     $cid = curl_init($url);
     curl_setopt($cid, CURLOPT_RETURNTRANSFER, true);
@@ -408,7 +410,7 @@ function create_list_struct($name, $project_iri, array $labels, array $comments)
     $labels = $tmp_labels;
 
     $tmp_comments = array();
-    foreach ($commentss as $comment) {
+    foreach ($comments as $comment) {
         $tmp_comments[] = (object) array (
             'language' => $comment->language,
             'value' => $comment->value
@@ -470,10 +472,29 @@ function process_property_node(
             }
             case 'gui_element': {
                 $gui_element = $subnode->nodeValue;
+                switch ($subnode->nodeValue) {
+                    case 'text': $gui_element = 'salsah-gui:SimpleText'; break;
+                    case 'textarea': $gui_element = 'salsah-gui:Textarea'; break;
+                    case 'pulldown': $gui_element = 'salsah-gui:Pulldown'; break;
+                    case 'slider': $gui_element = 'salsah-gui:Slider'; break;
+                    case 'spinbox': $gui_element = 'salsah-gui:Spinbox'; break;
+                    case 'searchbox': $gui_element = 'salsah-gui:Searchbox'; break;
+                    case 'date': $gui_element = 'salsah-gui:Date'; break;
+                    case 'geometry': $gui_element = 'salsah-gui:Geometry'; break;
+                    case 'colorpicker': $gui_element = 'salsah-gui:Colorpicker'; break;
+                    case 'hlist': $gui_element = 'salsah-gui:List'; break;
+                    case 'radio': $gui_element = 'salsah-gui:Radio'; break;
+                    case 'richtext': $gui_element = 'salsah-gui:Richtext'; break;
+                    //case 'time': $gui_element = 'salsah-gui:'; break;
+                    case 'interval': $gui_element = 'salsah-gui:Interval'; break;
+                    case 'geoname': $gui_element = 'salsah-gui:Geonames'; break;
+                    default:
+                }
                 break;
             }
             case 'gui_attributes': {
-                $gui_attrs = explode(';', $subnode->nodeValue);
+                // we don't need these here
+                // $gui_attrs = explode(';', $subnode->nodeValue);
                 break;
             }
             case 'resptr': {
@@ -514,7 +535,7 @@ function process_property_node(
                 }
                 case 'part_of': {
                     $super_props[] = 'knora-api:isPartOf';
-                    $object = is_null($resptr) ? 'knora-api:Resource'; // $resptr may be NULL !!
+                    $object = is_null($resptr) ? 'knora-api:Resource' : $resptr; // $resptr may be NULL !!
                     break;
                 }
                 case 'region_of': {
@@ -625,7 +646,7 @@ function process_property_node(
             case 'relation':
                 {
                     $super_props[] = array('dcterms:relation', 'knora-api:hasValue');
-                    $object = is_null($resptr) ? 'knora-api:Resource'; // $resptr may be NULL !!
+                    $object = is_null($resptr) ? 'knora-api:Resource': $resptr; // $resptr may be NULL !!
                     break;
                 }
             case 'rights':
@@ -671,42 +692,58 @@ function process_property_node(
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_INTEGER':
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-base:IntValue';
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_FLOAT':
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-base:DecimalValue';
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_DATE':
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-base:DateValue';
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_PERIOD':
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-base:DateValue';
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_RESPTR':
                 {
                     $super_props[] = 'knora-api:hasLinkTo';
-                    $object = $resptr;
+                    $object = 'knora-base:LinkValue';
+                    if (array_key_exists('restypeid', $attrs)) {
+                        list($dummy, $restype_id) = explode('=', $attrs['restypeid']);
+                    }
+                    $object = $restype_id; // TODO: //resolve old ID to ont:name
                     break;
                 }
             case 'VALTYPE_SELECTION' :
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-base:ListValue';
+                    if (array_key_exists('selection', $attrs)) {
+                        list($dummy, $sel_id) = explode('=', $attrs['selection']);
+                        $sel_iri = $GLOBALS['lists'][$sel_id];
+                        array_push($attrs, 'hlist=<' . $sel_iri . '>');
+                        unset($attrs['selection']);
+                    }
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_TIME' :
@@ -724,6 +761,7 @@ function process_property_node(
                 {
                     $super_props[] = 'knora-api:hasValue';
                     break;
+
                 }
             case 'VALTYPE_COLOR' :
                 {
@@ -734,8 +772,15 @@ function process_property_node(
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-base:ListValue';
+                    if (array_key_exists('selection', $attrs)) {
+                        list($dummy, $sel_id) = explode('=', $attrs['selection']);
+                        $sel_iri = $GLOBALS['hlists'][$sel_id];
+                        array_push($attrs, 'hlist=<' . $sel_iri . '>');
+                        unset($attrs['selection']);
+                    }
+                    $gui_attrs = $attrs;
                     break;
-                }
+                 }
             case 'VALTYPE_ICONCLASS' :
                 {
                     $super_props[] = 'knora-api:hasValue';
@@ -774,7 +819,7 @@ function process_property_node(
         $labels,
         $comments,
         $gui_element,
-        $gui_attributes
+        $gui_attrs
     );
 
     return $last_onto_date;
@@ -859,11 +904,13 @@ function process_resclass_node(
 
 
 function process_ontology_node($project_iri, DOMnode $node) {
+    $lists = array();
     $restype_nodes = array();
     $attributes = process_attributes($node);
     $onto_name = $attributes['name'];
 
     $result = knora_get($GLOBALS['server'] . '/v2/ontologies/metadata', $project_iri);
+    print_r($result);
 
     if ($result->{'rdfs:label'} == $attributes['name']) {
         $ontology_iri = $result->{'@id'};
@@ -903,7 +950,6 @@ function process_ontology_node($project_iri, DOMnode $node) {
 
     foreach ($selections as $selection) {
         $selinfo = process_selection_nodes($project_iri, $selection);
-        print_r($selinfo);
     }
 
     die();
@@ -989,12 +1035,18 @@ function process_selection_nodes($project_iri, DOMnode $node) {
         switch($subnode->nodeName) {
             case 'label': {
                 $subattributes = process_attributes($subnode);
-                $labels[$subattributes['lang']] = $subnode->nodeValue;
+                $label = new stdClass();
+                $label->value = $subnode->nodeValue;
+                $label->language = $subattributes['lang'];
+                $labels[] = $label;
                 break;
             }
             case 'description': {
                 $subattributes = process_attributes($subnode);
-                $comments[$subattributes['lang']] = $subnode->nodeValue;
+                $comment = new stdClass();
+                $comment->value = $subnode->nodeValue;
+                $comment->language = $subattributes['lang'];
+                $comments[] = $comment;
                 break;
             }
             case 'nodes': break;
@@ -1002,9 +1054,12 @@ function process_selection_nodes($project_iri, DOMnode $node) {
         }
     }
     $list = create_list_struct($selection_name, $project_iri, $labels, $comments);
-    $result =  $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
+    $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
     die_on_api_error($result, __LINE__);
-    return $result;
+
+    $GLOBALS['lists'][$selection_id] = $result->list->listinfo->id;
+
+    return $result->list->listinfo;
 }
 //=============================================================================================
 
