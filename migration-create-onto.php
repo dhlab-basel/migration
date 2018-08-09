@@ -888,16 +888,25 @@ function process_ontology_node($project_iri, DOMnode $node) {
 
 
     $restype_nodes = array();
+    $selections = array();
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
         switch($subnode->nodeName) {
             case 'longname': break; // we do nothing with the long vocabulary/ontology name
             case 'uri': break; // we ignore this "fake" uri...
+            case 'selection': array_push($selections, $subnode); break;
             case 'restype': array_push($restype_nodes, $subnode); break;
             default: ;
         }
     }
+
+    foreach ($selections as $selection) {
+        $selinfo = process_selection_nodes($project_iri, $selection);
+        print_r($selinfo);
+    }
+
+    die();
 
     foreach ($restype_nodes as $restype_node) {
         $ontology_moddate = process_resclass_node(
@@ -965,6 +974,37 @@ function process_project_node(DOMnode $node) {
         process_ontology_node($project_iri, $vocabulary_node);
     }
 
+}
+//=============================================================================================
+
+function process_selection_nodes($project_iri, DOMnode $node) {
+    $attributes = process_attributes($node);
+    $selection_name = $attributes['name'];
+    $selection_id = $attributes['id'];
+
+    $comments = array();
+    $labels = array();
+    for ($i = 0; $i < $node->childNodes->length; $i++) {
+        $subnode = $node->childNodes->item($i);
+        switch($subnode->nodeName) {
+            case 'label': {
+                $subattributes = process_attributes($subnode);
+                $labels[$subattributes['lang']] = $subnode->nodeValue;
+                break;
+            }
+            case 'description': {
+                $subattributes = process_attributes($subnode);
+                $comments[$subattributes['lang']] = $subnode->nodeValue;
+                break;
+            }
+            case 'nodes': break;
+            default:
+        }
+    }
+    $list = create_list_struct($selection_name, $project_iri, $labels, $comments);
+    $result =  $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
+    die_on_api_error($result, __LINE__);
+    return $result;
 }
 //=============================================================================================
 
