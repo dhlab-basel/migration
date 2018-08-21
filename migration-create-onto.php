@@ -952,8 +952,6 @@ function process_ontology_node($project_iri, DOMnode $node) {
         $selinfo = process_selection_nodes($project_iri, $selection);
     }
 
-    die();
-
     foreach ($restype_nodes as $restype_node) {
         $ontology_moddate = process_resclass_node(
             $ontology_iri,
