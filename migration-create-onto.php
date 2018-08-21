@@ -912,17 +912,19 @@ function process_ontology_node($project_iri, DOMnode $node) {
     $result = knora_get($GLOBALS['server'] . '/v2/ontologies/metadata', $project_iri);
     print_r($result);
 
-    if ($result->{'rdfs:label'} == $attributes['name']) {
-        $ontology_iri = $result->{'@id'};
-        $ontology_moddate = $result->{'knora-api:lastModificationDate'};
-        echo 'Ontology already exists:', $ontology_iri, PHP_EOL;
+    foreach ($result->{'@graph'} as $res) {
+        if ($res->{'rdfs:label'} == $attributes['name']) {
+            $ontology_iri = $res->{'@id'};
+            $ontology_moddate = $res->{'knora-api:lastModificationDate'};
+            echo 'Ontology already exists:', $ontology_iri, PHP_EOL;
 
-        $result = knora_delete(
-            $GLOBALS['server'] . '/v2/ontologies',
-            $ontology_iri,
-            array('lastModificationDate' => $ontology_moddate)
-        );
-        die_on_api_error($result, __LINE__);
+            $result = knora_delete(
+                $GLOBALS['server'] . '/v2/ontologies',
+                $ontology_iri,
+             array('lastModificationDate' => $ontology_moddate)
+            );
+            die_on_api_error($result, __LINE__);
+        }
     }
 
     $ontology = create_ontology_struct ($onto_name, $project_iri);
