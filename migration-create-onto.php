@@ -198,9 +198,10 @@ function knora_delete($apiurl, $iri, array $options = NULL) {
 //=============================================================================
 
 
-function die_on_api_error($result, $line) {
+function die_on_api_error($result, $line, $data = NULL) {
     if (isset($result->error)) {
         echo 'ERROR in "knora API" at line: ', $line, PHP_EOL, $result->error, PHP_EOL;
+        if (isset($data)) print_r($data);
         die(-1);
     }
 }
@@ -208,9 +209,9 @@ function die_on_api_error($result, $line) {
 
 
 function create_property_struct (
-    $ontology_iri,
-    $onto_name,
-    $last_onto_date,
+    string $ontology_iri,
+    string $onto_name,
+    string $last_onto_date,
     $prop_name,
     array $super_props,
     $subject,
@@ -231,6 +232,7 @@ function create_property_struct (
     $labels = $tmp_labels;
 
     $tmp_comments = array();
+    if (count($comments) == 0) $comments['en'] = 'none';
     foreach ($comments as $lang => $comment) {
         $tmp_comments[] = (object) array (
             '@language' => $lang,
@@ -247,28 +249,34 @@ function create_property_struct (
     }
     $super_props = $tmp_super_props;
 
+    $propdata = new stdClass;
+    $propdata->{'@id'} = $onto_name . ':' . $prop_name;
+    $propdata->{'@type'} = 'owl:ObjectProperty';
+    $propdata->{'knora-api:subjectType'} = (object) array(
+        '@id' => $subject
+    );
+    $propdata->{'knora-api:objectType'} = (object) array(
+        '@id' => $object
+    );
+    if (count($comments) > 0) {
+        $propdata->{'rdfs:comment'} = $comments;
+    }
+    $propdata->{'rdfs:label'} = $labels;
+    $propdata->{'rdfs:subPropertyOf'} = $super_props;
+    $propdata->{'salsah-gui:guiElement'} = (object) array(
+        '@id' => $gui_element
+    );
+    if (count($gui_attributes) > 0) {
+        $propdata->{'salsah-gui:guiAttribute'} = $gui_attributes;
+    }
+
+
     $property = (object) array(
         '@id' => $ontology_iri,
         '@type' => 'owl:Ontology',
         'knora-api:lastModificationDate' => $last_onto_date,
         '@graph' => array(
-            (object) array(
-                '@id' => $onto_name . ':' . $prop_name,
-                '@type'=> 'owl:ObjectProperty',
-                'knora-api:subjectType'=> (object) array(
-                    '@id' => $subject
-                ),
-                'knora-api:objectType' => (object) array(
-                    '@id' => $object
-                ),
-                'rdfs:comment' => $comments,
-                'rdfs:label' => $labels,
-                'rdfs:subPropertyOf' => $super_props,
-                'salsah-gui:guiElement' => (object) array(
-                    '@id' => $gui_element
-                ),
-                'salsah-gui:guiAttribute' => $gui_attributes
-            )
+            $propdata
         ),
         '@context' => (object) array (
             'rdf' => 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
@@ -277,6 +285,7 @@ function create_property_struct (
             'owl' => 'http://www.w3.org/2002/07/owl#',
             'rdfs' => 'http://www.w3.org/2000/01/rdf-schema#',
             'xsd' => 'http://www.w3.org/2001/XMLSchema#',
+            'dcterms' => 'http://purl.org/dc/terms/',
             $onto_name => $ontology_iri . '#'
         )
     );
@@ -305,6 +314,7 @@ function create_resclass_struct (
     $labels = $tmp_labels;
 
     $tmp_comments = array();
+    if (count($comments) == 0) $comments['en'] = 'none';
     foreach ($comments as $lang => $comment) {
         $tmp_comments[] = (object) array (
             '@language' => $lang,
@@ -442,12 +452,16 @@ function process_property_node(
     $prop_voc = $attributes['vocabulary'];
     $prop_name = $attributes['name'];
 
+    if ($prop_name == '__location__') return $last_onto_date;
+
     $labels = array();
     $valtype = NULL;
     $occurrence = NULL;
+    $super_props = array();
     $attrs = array();
     $gui_element = NULL;
     $gui_attrs = array();
+    $comments = array();
     $resptr = NULL;
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
@@ -467,7 +481,12 @@ function process_property_node(
                 break;
             }
             case 'attributes': {
-                $attrs = explode(';', $subnode->nodeValue);
+                $tmp_attrs = explode(';', $subnode->nodeValue);
+                foreach ($tmp_attrs as $attr) {
+                    if (!empty($attr)) {
+                        $attrs[] = $attr;
+                    }
+                }
                 break;
             }
             case 'gui_element': {
@@ -488,7 +507,7 @@ function process_property_node(
                     //case 'time': $gui_element = 'salsah-gui:'; break;
                     case 'interval': $gui_element = 'salsah-gui:Interval'; break;
                     case 'geoname': $gui_element = 'salsah-gui:Geonames'; break;
-                    default:
+                    default: echo '??????: ', $subnode->nodeValue, PHP_EOL; die();
                 }
                 break;
             }
@@ -527,8 +546,7 @@ function process_property_node(
                 case 'origname':
                 case 'institution':
                 case 'keyword':
-                case 'label':
-                        {
+                case 'label': {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
@@ -545,7 +563,7 @@ function process_property_node(
                 }
                 case 'seqnum': {
                     $super_props[] = 'knora-api:seqnum';
-                    $object = 'knora-base:IntValue';
+                    $object = 'knora-api:IntValue';
                     break;
                 }
                 case 'transcription': {
@@ -584,99 +602,115 @@ function process_property_node(
         switch ($prop_name) {
             case 'author':
                 {
-                    $super_props[] = array('dcterms:author', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:author';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'contributor':
                 {
-                    $super_props[] = array('dcterms:contributor', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:contributor';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'coverage':
                 {
-                    $super_props[] = array('dcterms:coverage', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:coverage';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'creator':
                 {
-                    $super_props[] = array('dcterms:creator', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:creator';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'date':
                 {
-                    $super_props[] = array('dcterms:date', 'knora-api:hasValue');
-                    $object = 'knora-base:DateValue';
+                    $super_props[] = 'dcterms:date';
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:DateValue';
                     break;
                 }
             case 'description':
             case 'description_rt':
                 {
-                    $super_props[] = array('dcterms:creator', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:creator';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'format':
                 {
-                    $super_props[] = array('dcterms:format', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:format';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'identifier':
                 {
-                    $super_props[] = array('dcterms:identifier', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:identifier';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'language':
                 {
-                    $super_props[] = array('dcterms:language', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:language';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'publisher':
                 {
-                    $super_props[] = array('dcterms:publisher', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:publisher';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'relation':
                 {
-                    $super_props[] = array('dcterms:relation', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:relation';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = is_null($resptr) ? 'knora-api:Resource': $resptr; // $resptr may be NULL !!
                     break;
                 }
             case 'rights':
                 {
-                    $super_props[] = array('dcterms:rights', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:rights';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'source':
             case 'source_rt':
                 {
-                    $super_props[] = array('dcterms:source', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:source';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'subject':
                 {
-                    $super_props[] = array('dcterms:subject', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:subject';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'title':
                 {
-                    $super_props[] = array('dcterms:title', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:title';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
             case 'type':
                 {
-                    $super_props[] = array('dcterms:type', 'knora-api:hasValue');
+                    $super_props[] = 'dcterms:type';
+                    $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
@@ -698,35 +732,35 @@ function process_property_node(
             case 'VALTYPE_INTEGER':
                 {
                     $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-base:IntValue';
+                    $object = 'knora-api:IntValue';
                     $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_FLOAT':
                 {
                     $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-base:DecimalValue';
+                    $object = 'knora-api:DecimalValue';
                     $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_DATE':
                 {
                     $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-base:DateValue';
+                    $object = 'knora-api:DateValue';
                     $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_PERIOD':
                 {
                     $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-base:DateValue';
+                    $object = 'knora-api:DateValue';
                     $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_RESPTR':
                 {
                     $super_props[] = 'knora-api:hasLinkTo';
-                    $object = 'knora-base:LinkValue';
+                    $object = 'knora-api:LinkValue';
                     if (array_key_exists('restypeid', $attrs)) {
                         list($dummy, $restype_id) = explode('=', $attrs['restypeid']);
                     }
@@ -736,14 +770,21 @@ function process_property_node(
             case 'VALTYPE_SELECTION' :
                 {
                     $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-base:ListValue';
-                    if (array_key_exists('selection', $attrs)) {
-                        list($dummy, $sel_id) = explode('=', $attrs['selection']);
-                        $sel_iri = $GLOBALS['lists'][$sel_id];
-                        array_push($attrs, 'hlist=<' . $sel_iri . '>');
-                        unset($attrs['selection']);
+                    $object = 'knora-api:ListValue';
+
+                    $tmp_attrs = array();
+                    foreach ($attrs as $i => $attr) {
+                        if (strncmp('selection=', $attr, 10) == 0) {
+                            list($dummy, $sel_id) = explode('=', $attr);
+                            $sel_iri = $GLOBALS['lists'][$sel_id];
+                            array_push($tmp_attrs, 'hlist=<' . $sel_iri . '>');
+                        }
+                        else {
+                            array_push($tmp_attrs, $attr);
+                        }
                     }
-                    $gui_attrs = $attrs;
+
+                    $gui_attrs = $tmp_attrs;
                     break;
                 }
             case 'VALTYPE_TIME' :
@@ -771,7 +812,7 @@ function process_property_node(
             case 'VALTYPE_HLIST' :
                 {
                     $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-base:ListValue';
+                    $object = 'knora-api:ListValue';
                     if (array_key_exists('selection', $attrs)) {
                         list($dummy, $sel_id) = explode('=', $attrs['selection']);
                         $sel_iri = $GLOBALS['hlists'][$sel_id];
@@ -808,7 +849,8 @@ function process_property_node(
 
 
     $subject = $onto_name . ':' . $subject_name;
-    create_property_struct (
+
+    $property = create_property_struct (
         $ontology_iri,
         $onto_name,
         $last_onto_date,
@@ -821,6 +863,11 @@ function process_property_node(
         $gui_element,
         $gui_attrs
     );
+
+
+    $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/properties', $property);
+    die_on_api_error($result, __LINE__, $property);
+    $last_onto_date = $result->{'knora-api:lastModificationDate'};
 
     return $last_onto_date;
 
@@ -882,10 +929,7 @@ function process_resclass_node(
     );
 
     $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/classes', $resclass);
-    echo '----------------------------------------------------------', PHP_EOL;
-    print_r($result);
-    echo '==========================================================', PHP_EOL;
-    die_on_api_error($result, __LINE__);
+    die_on_api_error($result, __LINE__, $resclass);
     $last_onto_date = $result->{'knora-api:lastModificationDate'};
 
     foreach ($properties as $property_node) {
@@ -910,18 +954,33 @@ function process_ontology_node($project_iri, DOMnode $node) {
     $onto_name = $attributes['name'];
 
     $result = knora_get($GLOBALS['server'] . '/v2/ontologies/metadata', $project_iri);
-    print_r($result);
 
-    foreach ($result->{'@graph'} as $res) {
-        if ($res->{'rdfs:label'} == $attributes['name']) {
-            $ontology_iri = $res->{'@id'};
-            $ontology_moddate = $res->{'knora-api:lastModificationDate'};
+    if (isset($result->{'@graph'})) {
+        foreach ($result->{'@graph'} as $res) {
+            if ($res->{'rdfs:label'} == $attributes['name']) {
+                $ontology_iri = $res->{'@id'};
+                $ontology_moddate = $res->{'knora-api:lastModificationDate'};
+                echo 'Ontology already exists:', $ontology_iri, PHP_EOL;
+
+                $result = knora_delete(
+                    $GLOBALS['server'] . '/v2/ontologies',
+                    $ontology_iri,
+                    array('lastModificationDate' => $ontology_moddate)
+                );
+                die_on_api_error($result, __LINE__);
+            }
+        }
+    }
+    else {
+        if ($result->{'rdfs:label'} == $attributes['name']) {
+            $ontology_iri = $result->{'@id'};
+            $ontology_moddate = $result->{'knora-api:lastModificationDate'};
             echo 'Ontology already exists:', $ontology_iri, PHP_EOL;
 
             $result = knora_delete(
                 $GLOBALS['server'] . '/v2/ontologies',
                 $ontology_iri,
-             array('lastModificationDate' => $ontology_moddate)
+                array('lastModificationDate' => $ontology_moddate)
             );
             die_on_api_error($result, __LINE__);
         }
@@ -930,7 +989,7 @@ function process_ontology_node($project_iri, DOMnode $node) {
     $ontology = create_ontology_struct ($onto_name, $project_iri);
 
     $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies', $ontology);
-    die_on_api_error($result, __LINE__);
+    die_on_api_error($result, __LINE__, $ontology);
 
     $ontology_iri = $result->{'@id'};
     $ontology_moddate = $result->{'knora-api:lastModificationDate'};
@@ -953,6 +1012,7 @@ function process_ontology_node($project_iri, DOMnode $node) {
     foreach ($selections as $selection) {
         $selinfo = process_selection_nodes($project_iri, $selection);
     }
+
 
     foreach ($restype_nodes as $restype_node) {
         $ontology_moddate = process_resclass_node(
@@ -1003,13 +1063,13 @@ function process_project_node(DOMnode $node) {
     $result = knora_get($GLOBALS['server'] . '/admin/projects', $project_iri);
     if (isset($result->error)) {
         $result = knora_post_data($GLOBALS['server'] . '/admin/projects', $project);
-        die_on_api_error($result, __LINE__);
+        die_on_api_error($result, __LINE__, $project);
         $project_iri = $result->project->id;
     }
     else {
         unset($project->shortcode); // we don't need this for PUT
         $result = knora_put_data($GLOBALS['server'] . '/admin/projects', $project_iri, $project);
-        die_on_api_error($result, __LINE__);
+        die_on_api_error($result, __LINE__, $project);
         $project_iri = $result->project->id;
     }
 
@@ -1055,7 +1115,7 @@ function process_selection_nodes($project_iri, DOMnode $node) {
     }
     $list = create_list_struct($selection_name, $project_iri, $labels, $comments);
     $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
-    die_on_api_error($result, __LINE__);
+    die_on_api_error($result, __LINE__, $list);
 
     $GLOBALS['lists'][$selection_id] = $result->list->listinfo->id;
 
