@@ -11,6 +11,8 @@ $GLOBALS['username'] = 'root@example.com';
 $GLOBALS['password'] = 'test';
 
 $GLOBALS['lists'] = array();
+$GLOBALS['res_ids'] = array();
+
 /*
  * Properties in knora-base:
  *
@@ -440,6 +442,49 @@ function create_list_struct($name, $project_iri, array $labels, array $comments)
 //=============================================================================
 
 
+function create_cardinality_struct(
+    $ontology_iri,
+    $onto_name,
+    $class_iri,
+    $property_iri,
+    $cardinality,
+    $last_mod_date
+) {
+    switch ($cardinality) {
+        case '0': $cc1 = 'owl:minCardinality'; $cc2 = 0; break;
+        case '0-1': $cc1 = 'owl:maxCardinality'; $cc2 = 1; break;
+        case '0-n': $cc1 = 
+    }
+    $card = (object) array(
+        '@id' => $ontology_iri,
+        '@type' => 'owl:Ontology',
+        'knora-api:lastModificationDate' => $last_mode_date,
+        '@graph' => array(
+            (object) array(
+                '@id' => $class_iri,
+                '@type' => 'owl:Class',
+                'rdfs:subClassOf' => (object) array(
+                    '@type' => 'owl:Restriction',
+                    'owl:maxCardinality' => 1,
+                    'owl:onProperty' => (object) array(
+                        '@id' => $property_iri
+                    )
+                )
+            )
+        ),
+        '@context' => (object) array(
+            'rdf' => "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            'knora-api' => 'http://api.knora.org/ontology/knora-api/v2#',
+            'owl' => 'http://www.w3.org/2002/07/owl#',
+            'rdfs' => 'http://www.w3.org/2000/01/rdf-schema#',
+            'xsd' => 'http://www.w3.org/2001/XMLSchema#',
+            $onto_name => $ontology_iri
+        )
+    );
+}
+//=============================================================================
+
+
 function process_property_node(
     $ontology_iri,
     $onto_name,
@@ -463,6 +508,7 @@ function process_property_node(
     $gui_attrs = array();
     $comments = array();
     $resptr = NULL;
+    $res_id = NULL;
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
@@ -475,6 +521,9 @@ function process_property_node(
             case 'valtype' : {
                 $valtype = $subnode->nodeValue;
                 break;
+            }
+            case 'id' : {
+                $res_id = $subnode->nodeValue;
             }
             case 'occurrence': {
                 $occurrence = $subnode->nodeValue;
@@ -761,10 +810,23 @@ function process_property_node(
                 {
                     $super_props[] = 'knora-api:hasLinkTo';
                     $object = 'knora-api:LinkValue';
-                    if (array_key_exists('restypeid', $attrs)) {
-                        list($dummy, $restype_id) = explode('=', $attrs['restypeid']);
+                    $tmp_attrs = array();
+                    foreach($attrs as $i => $attr) {
+                        if (strncmp('restypeid=', $attr, 10) == 0) {
+                            list($dummy, $res_id) = explode('=', $attr);
+                            if (array_key_exists($res_id, $GLOBALS['res_ids'])) {
+                                $object = $GLOBALS['res_ids'][$res_id];
+                            }
+                            else {
+                                echo '==> PROBLEM!!!!!!: resourcetype_id = ', $res_id, ' not known!', PHP_EOL;
+                                print_r($GLOBALS['res_ids']);
+                                die();
+                            }
+                        }
+                        else {
+                            array_push($tmp_attrs, $attr);
+                        }
                     }
-                    $object = $restype_id; // TODO: //resolve old ID to ont:name
                     break;
                 }
             case 'VALTYPE_SELECTION' :
@@ -871,6 +933,15 @@ function process_property_node(
 
     return $last_onto_date;
 
+}
+//=============================================================================
+
+
+function get_resclass_ids($onto_name, DOMnode $node) {
+    $attributes = process_attributes($node);
+    $class_name = $attributes['name'];
+    $res_id = $attributes['id'];
+    $GLOBALS['res_ids'][$res_id] = $onto_name . ':' . $class_name;
 }
 //=============================================================================
 
@@ -1013,6 +1084,10 @@ function process_ontology_node($project_iri, DOMnode $node) {
         $selinfo = process_selection_nodes($project_iri, $selection);
     }
 
+
+    foreach ($restype_nodes as $restype_node) {
+        get_resclass_ids($onto_name, $restype_node);
+    }
 
     foreach ($restype_nodes as $restype_node) {
         $ontology_moddate = process_resclass_node(

@@ -398,6 +398,7 @@ foreach ($vocabularies as $vocabulary) {
         list($salsah_voc, $restype_name) = explode(':', $restype_info->name);
         $xml->writeAttribute('name', $restype_name);
         $xml->writeAttribute('type', $restype_info->class);
+        $xml->writeAttribute('id', $restype->id);
         if (isset($restype_info->label) and is_array($restype_info->label)) {
             foreach ($restype_info->label as $label) {
                 $xml->startElement('label');
