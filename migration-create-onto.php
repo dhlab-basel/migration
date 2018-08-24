@@ -256,9 +256,12 @@ function create_property_struct (
     $propdata = new stdClass;
     $propdata->{'@id'} = $onto_name . ':' . $prop_name;
     $propdata->{'@type'} = 'owl:ObjectProperty';
-    $propdata->{'knora-api:subjectType'} = (object) array(
-        '@id' => $subject
-    );
+    if (!is_null($subject)) {
+        $propdata->{'knora-api:subjectType'} = (object) array(
+            '@id' => $subject
+        );
+
+    }
     $propdata->{'knora-api:objectType'} = (object) array(
         '@id' => $object
     );
@@ -515,6 +518,7 @@ function process_property_node(
     $comments = array();
     $resptr = NULL;
     $res_id = NULL;
+    $used_by_res = array();
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
@@ -533,6 +537,10 @@ function process_property_node(
             }
             case 'occurrence': {
                 $occurrence = $subnode->nodeValue;
+                break;
+            }
+            case 'used_by_res': {
+                array_push($used_by_res, $subnode->nodeValue);
                 break;
             }
             case 'attributes': {
@@ -577,6 +585,7 @@ function process_property_node(
             }
         }
     }
+
 
     $object = NULL;
     if ($prop_voc == 'salsah') {
@@ -634,7 +643,8 @@ function process_property_node(
                 }
             case 'transcription':
                 {
-                    // SHOULD NOT OCCUR!!
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:TextValue';
                     break;
                 }
             case 'canton':
@@ -928,6 +938,8 @@ function process_property_node(
             case 'VALTYPE_GEONAME' :
                 {
                     $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:GeonameValue';
+                    $gui_attrs = array();
                     break;
                 }
             default:
@@ -941,7 +953,14 @@ function process_property_node(
     }
 
 
-    $subject = $onto_name . ':' . $subject_name;
+    //if (($prop_voc == $onto_name) and (count($used_by_res) > 1)) {
+    if (count($used_by_res) > 1) {
+        $subject = 'knora-api:Resource';
+    }
+    else {
+        $subject = $onto_name . ':' . $subject_name;
+    }
+
 
     $property = create_property_struct (
         $ontology_iri,
@@ -960,6 +979,7 @@ function process_property_node(
     if (!array_key_exists($prop_voc . ':' . $prop_name,  $GLOBALS['properties'])) {
         echo 'INFO: Adding ', $onto_name, ':', $attributes['name'], '...';
         $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/properties', $property);
+        if (isset($result->error)) print_r($GLOBALS['properties'][$prop_voc . ':' . $prop_name]);
         die_on_api_error($result, __LINE__, $property);
         echo 'done!', PHP_EOL;
         $last_onto_date = $result->{'knora-api:lastModificationDate'};
@@ -1058,18 +1078,7 @@ function process_resclass_node(
     $last_onto_date = $result->{'knora-api:lastModificationDate'};
     $class_iri = $result->{'@graph'}[0]->{'@id'};
 
-
-    foreach ($properties as $property_node) {
-        $last_onto_date = process_property_node(
-            $ontology_iri,
-            $onto_name,
-            $last_onto_date,
-            $class_name,
-            $property_node
-        );
-    }
-
-    return $last_onto_date;
+    return array($class_name, $properties, $last_onto_date);
 }
 //=============================================================================
 
@@ -1151,14 +1160,29 @@ function process_ontology_node($project_iri, DOMnode $node) {
         get_resclass_ids($onto_name, $restype_node);
     }
 
+    $class_properties = array();
     foreach ($restype_nodes as $restype_node) {
-        $ontology_moddate = process_resclass_node(
+        list ($class_name, $properties, $ontology_moddate) = process_resclass_node(
             $ontology_iri,
             $onto_name,
             $ontology_moddate,
             $restype_node
         );
+        $class_properties[$class_name] = $properties;
     }
+
+    foreach ($class_properties as $class_name => $properties) {
+        foreach ($properties as $property_node) {
+            $ontology_moddate = process_property_node(
+                $ontology_iri,
+                $onto_name,
+                $ontology_moddate,
+                $class_name,
+                $property_node
+            );
+        }
+    }
+
 }
 //=============================================================================
 

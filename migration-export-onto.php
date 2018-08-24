@@ -391,6 +391,24 @@ foreach ($vocabularies as $vocabulary) {
     // get all restypes
     //
     $restypes = get_resourcetypes_of_vocabulary($vocabulary->id);
+
+    //
+    // first we check if there are properties used by more than one resource
+    //
+    $prop_in_res = array();
+    foreach ($restypes as $restype) {
+        $restype_info = get_resourcetype($restype->id);
+        foreach ($restype_info->properties as $property) {
+            if (array_key_exists($property->vocabulary . ':' . $property->name, $prop_in_res)) {
+                array_push($prop_in_res[$property->vocabulary . ':' . $property->name], $restype_info->name);
+            }
+            else {
+                $prop_in_res[$property->vocabulary . ':' . $property->name] = array($restype_info->name);
+            }
+        }
+    }
+
+
     foreach ($restypes as $restype) {
         $restype_info = get_resourcetype($restype->id);
         $xml->startElement('restype');
@@ -437,6 +455,10 @@ foreach ($vocabularies as $vocabulary) {
                     $xml->text($description->description);
                     $xml->endElement(); // label
                 }
+            }
+
+            foreach ($prop_in_res[$property->vocabulary . ':' . $property->name] as $p => $r) {
+                $xml->writeElement('used_by_res', $r);
             }
             $xml->writeElement('valtype', $property->vt_php_constant);
             $xml->writeElement('occurrence', $property->occurrence);
