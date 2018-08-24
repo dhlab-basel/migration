@@ -12,6 +12,7 @@ $GLOBALS['password'] = 'test';
 
 $GLOBALS['lists'] = array();
 $GLOBALS['res_ids'] = array();
+$GLOBALS['properties'] = array();
 
 /*
  * Properties in knora-base:
@@ -447,25 +448,27 @@ function create_cardinality_struct(
     $onto_name,
     $class_iri,
     $property_iri,
-    $cardinality,
+    $occurence,
     $last_mod_date
 ) {
-    switch ($cardinality) {
-        case '0': $cc1 = 'owl:minCardinality'; $cc2 = 0; break;
+    switch ($occurence) {
+        case '1': $cc1 = 'owl:cardinality'; $cc2 = 1; break;
         case '0-1': $cc1 = 'owl:maxCardinality'; $cc2 = 1; break;
-        case '0-n': $cc1 = 
+        case '0-n': $cc1 = 'owl:minCardinality'; $cc2 = 0; break;
+        case '1-n': $cc1 = 'owl:minCardinality'; $cc2 = 1; break;
+        default: die('FATAL ERROR: Unknown cardinality: ' . $occurence);
     }
-    $card = (object) array(
+    $cardinality = (object) array(
         '@id' => $ontology_iri,
         '@type' => 'owl:Ontology',
-        'knora-api:lastModificationDate' => $last_mode_date,
+        'knora-api:lastModificationDate' => $last_mod_date,
         '@graph' => array(
             (object) array(
                 '@id' => $class_iri,
                 '@type' => 'owl:Class',
                 'rdfs:subClassOf' => (object) array(
                     '@type' => 'owl:Restriction',
-                    'owl:maxCardinality' => 1,
+                    $cc1 => $cc2,
                     'owl:onProperty' => (object) array(
                         '@id' => $property_iri
                     )
@@ -481,6 +484,8 @@ function create_cardinality_struct(
             $onto_name => $ontology_iri
         )
     );
+
+    return $cardinality;
 }
 //=============================================================================
 
@@ -489,6 +494,7 @@ function process_property_node(
     $ontology_iri,
     $onto_name,
     $last_onto_date,
+    $class_iri,
     $subject_name,
     DOMnode $node
 ) {
@@ -576,12 +582,7 @@ function process_property_node(
     if (($prop_voc == 'salsah') && ($prop_voc == 'dc')) {
         if ($prop_voc == 'salsah') {
             switch ($prop_name) {
-                case 'uri': {
-                    $super_props[] = 'knora-api:hasValue';
-                    $object = 'knora-api:UriValue';
-                    break;
-                }
-                case 'lastname':
+                 case 'lastname':
                 case 'firstname':
                 case 'institution':
                 case 'address':
@@ -590,13 +591,24 @@ function process_property_node(
                 case 'phone':
                 case 'fax':
                 case 'email':
-                case 'comment':
-                case 'comment_rt':
                 case 'origname':
                 case 'institution':
                 case 'keyword':
                 case 'label': {
+                    //
+                // all these are just a sub-property of a TextValue;
                     $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:TextValue';
+                    break;
+                }
+                case 'uri': {
+                    $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:UriValue';
+                    break;
+                }
+                case 'comment':
+                case 'comment_rt': {
+                    $super_props[] = 'knora-api:hasComment';
                     $object = 'knora-api:TextValue';
                     break;
                 }
@@ -930,6 +942,17 @@ function process_property_node(
     $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/properties', $property);
     die_on_api_error($result, __LINE__, $property);
     $last_onto_date = $result->{'knora-api:lastModificationDate'};
+    $property_iri = $result->{'@graph'}[0]->{'@id'};
+
+
+    $cardinality = create_cardinality_struct(
+        $ontology_iri,
+        $onto_name,
+        $class_iri,
+        $property_iri,
+        $occurrence,
+        $last_onto_date
+    );
 
     return $last_onto_date;
 
@@ -1002,6 +1025,8 @@ function process_resclass_node(
     $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/classes', $resclass);
     die_on_api_error($result, __LINE__, $resclass);
     $last_onto_date = $result->{'knora-api:lastModificationDate'};
+    $class_iri = $result->{'@graph'}[0]->{'@id'};
+
 
     foreach ($properties as $property_node) {
         $last_onto_date = process_property_node(
