@@ -10,7 +10,8 @@
 $GLOBALS['username'] = 'root@example.com';
 $GLOBALS['password'] = 'test';
 
-$GLOBALS['lists'] = array();
+$GLOBALS['selections'] = array();
+$GLOBALS['hlists'] = array();
 $GLOBALS['res_ids'] = array();
 $GLOBALS['properties'] = array();
 
@@ -481,7 +482,7 @@ function create_cardinality_struct(
             'owl' => 'http://www.w3.org/2002/07/owl#',
             'rdfs' => 'http://www.w3.org/2000/01/rdf-schema#',
             'xsd' => 'http://www.w3.org/2001/XMLSchema#',
-            $onto_name => $ontology_iri
+            $onto_name => $ontology_iri . '#'
         )
     );
 
@@ -494,7 +495,6 @@ function process_property_node(
     $ontology_iri,
     $onto_name,
     $last_onto_date,
-    $class_iri,
     $subject_name,
     DOMnode $node
 ) {
@@ -579,84 +579,99 @@ function process_property_node(
     }
 
     $object = NULL;
-    if (($prop_voc == 'salsah') && ($prop_voc == 'dc')) {
-        if ($prop_voc == 'salsah') {
-            switch ($prop_name) {
-                 case 'lastname':
-                case 'firstname':
-                case 'institution':
-                case 'address':
-                case 'city':
-                case 'zipcode':
-                case 'phone':
-                case 'fax':
-                case 'email':
-                case 'origname':
-                case 'institution':
-                case 'keyword':
-                case 'label': {
+    if ($prop_voc == 'salsah') {
+        switch ($prop_name) {
+            case 'lastname':
+            case 'firstname':
+            case 'institution':
+            case 'address':
+            case 'city':
+            case 'zipcode':
+            case 'phone':
+            case 'fax':
+            case 'email':
+            case 'origname':
+            case 'institution':
+            case 'keyword':
+            case 'label':
+                {
                     //
-                // all these are just a sub-property of a TextValue;
+                    // all these are just a sub-property of a TextValue;
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:TextValue';
                     break;
                 }
-                case 'uri': {
+            case 'uri':
+                {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:UriValue';
                     break;
                 }
-                case 'comment':
-                case 'comment_rt': {
+            case 'comment':
+            case 'comment_rt':
+                {
                     $super_props[] = 'knora-api:hasComment';
                     $object = 'knora-api:TextValue';
                     break;
                 }
-                case 'part_of': {
+            case 'part_of':
+                {
                     $super_props[] = 'knora-api:isPartOf';
                     $object = is_null($resptr) ? 'knora-api:Resource' : $resptr; // $resptr may be NULL !!
                     break;
                 }
-                case 'region_of': {
+            case 'region_of':
+                {
                     $super_props[] = 'knora-api:isRegionOf';
                     $object = is_null($resptr) ? 'knora-api:Representation' : $resptr; // $resptr may be NULL !!
                     break;
                 }
-                case 'seqnum': {
+            case 'seqnum':
+                {
                     $super_props[] = 'knora-api:seqnum';
                     $object = 'knora-api:IntValue';
                     break;
                 }
-                case 'transcription': {
+            case 'transcription':
+                {
                     // SHOULD NOT OCCUR!!
                     break;
                 }
-                case 'canton': {
+            case 'canton':
+                {
                     // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     break;
                 }
-                case 'color': {
+            case 'color':
+                {
                     $super_props[] = 'knora-api:hasColor';
                     $object = 'knora-api:ColorValue';
                     break;
                 }
-                case 'external_id': {
+            case 'external_id':
+                {
                     // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     break;
                 }
-                case 'external_provider': {
+            case 'external_provider':
+                {
                     // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     break;
                 }
-                case 'geography': {
+            case 'geography':
+                {
                     // TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     break;
                 }
-                case 'geometry': {
+            case 'geometry':
+                {
                     $super_props[] = 'knora-api:hasGeometry';
                     $object = 'knora-api:GeometryValue';
                 }
-            }
+            default:
+                {
+                    die('FATAL ERROR: Unknown property "' . $prop_name . '" in salsah system vocabulary!' . PHP_EOL);
+                }
         }
     }
     else if ($prop_voc == 'dc') {
@@ -736,7 +751,7 @@ function process_property_node(
                 {
                     $super_props[] = 'dcterms:relation';
                     $super_props[] = 'knora-api:hasValue';
-                    $object = is_null($resptr) ? 'knora-api:Resource': $resptr; // $resptr may be NULL !!
+                    $object = is_null($resptr) ? 'knora-api:Resource' : $resptr; // $resptr may be NULL !!
                     break;
                 }
             case 'rights':
@@ -821,21 +836,19 @@ function process_property_node(
             case 'VALTYPE_RESPTR':
                 {
                     $super_props[] = 'knora-api:hasLinkTo';
-                    $object = 'knora-api:LinkValue';
+                    $object = 'knora-api:Resource';
                     $tmp_attrs = array();
-                    foreach($attrs as $i => $attr) {
+                    foreach ($attrs as $i => $attr) {
                         if (strncmp('restypeid=', $attr, 10) == 0) {
                             list($dummy, $res_id) = explode('=', $attr);
                             if (array_key_exists($res_id, $GLOBALS['res_ids'])) {
                                 $object = $GLOBALS['res_ids'][$res_id];
-                            }
-                            else {
+                            } else {
                                 echo '==> PROBLEM!!!!!!: resourcetype_id = ', $res_id, ' not known!', PHP_EOL;
                                 print_r($GLOBALS['res_ids']);
                                 die();
                             }
-                        }
-                        else {
+                        } else {
                             array_push($tmp_attrs, $attr);
                         }
                     }
@@ -850,10 +863,9 @@ function process_property_node(
                     foreach ($attrs as $i => $attr) {
                         if (strncmp('selection=', $attr, 10) == 0) {
                             list($dummy, $sel_id) = explode('=', $attr);
-                            $sel_iri = $GLOBALS['lists'][$sel_id];
+                            $sel_iri = $GLOBALS['selections'][$sel_id];
                             array_push($tmp_attrs, 'hlist=<' . $sel_iri . '>');
-                        }
-                        else {
+                        } else {
                             array_push($tmp_attrs, $attr);
                         }
                     }
@@ -887,15 +899,20 @@ function process_property_node(
                 {
                     $super_props[] = 'knora-api:hasValue';
                     $object = 'knora-api:ListValue';
-                    if (array_key_exists('selection', $attrs)) {
-                        list($dummy, $sel_id) = explode('=', $attrs['selection']);
-                        $sel_iri = $GLOBALS['hlists'][$sel_id];
-                        array_push($attrs, 'hlist=<' . $sel_iri . '>');
-                        unset($attrs['selection']);
+
+                    $tmp_attrs = array();
+                    foreach ($attrs as $i => $attr) {
+                        if (strncmp('hlist=', $attr, 6) == 0) {
+                            list($dummy, $sel_id) = explode('=', $attr);
+                            $sel_iri = $GLOBALS['hlists'][$sel_id];
+                            array_push($tmp_attrs, 'hlist=<' . $sel_iri . '>');
+                        } else {
+                            array_push($tmp_attrs, $attr);
+                        }
                     }
-                    $gui_attrs = $attrs;
+                    $gui_attrs = $tmp_attrs;
                     break;
-                 }
+                }
             case 'VALTYPE_ICONCLASS' :
                 {
                     $super_props[] = 'knora-api:hasValue';
@@ -904,6 +921,8 @@ function process_property_node(
             case 'VALTYPE_RICHTEXT' :
                 {
                     $super_props[] = 'knora-api:hasValue';
+                    $object = 'knora-api:TextValue';
+                    $gui_attrs = $attrs;
                     break;
                 }
             case 'VALTYPE_GEONAME' :
@@ -918,7 +937,7 @@ function process_property_node(
         }
     }
     else {
-        // TODO: ERROR MESSAGE !!!!!!!!!!!!
+        die('FATAL ERROR: Unknown vocabulary "' . $prop_voc . '" for property "' . $prop_name . '"!' . PHP_EOL);
     }
 
 
@@ -938,13 +957,20 @@ function process_property_node(
         $gui_attrs
     );
 
+    if (!array_key_exists($prop_voc . ':' . $prop_name,  $GLOBALS['properties'])) {
+        echo 'INFO: Adding ', $onto_name, ':', $attributes['name'], '...';
+        $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/properties', $property);
+        die_on_api_error($result, __LINE__, $property);
+        echo 'done!', PHP_EOL;
+        $last_onto_date = $result->{'knora-api:lastModificationDate'};
+        $GLOBALS['properties'][$prop_voc . ':' . $prop_name] = $result;
+    }
 
-    $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/properties', $property);
-    die_on_api_error($result, __LINE__, $property);
-    $last_onto_date = $result->{'knora-api:lastModificationDate'};
-    $property_iri = $result->{'@graph'}[0]->{'@id'};
+    $property_iri = $onto_name . ':' . $attributes['name'];
 
+    echo 'INFO: Adding cardinality: ', $property_iri, PHP_EOL;
 
+    $class_iri = $onto_name . ':' . $subject_name;
     $cardinality = create_cardinality_struct(
         $ontology_iri,
         $onto_name,
@@ -954,8 +980,13 @@ function process_property_node(
         $last_onto_date
     );
 
-    return $last_onto_date;
 
+    $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/cardinalities', $cardinality);
+    die_on_api_error($result, __LINE__, $property);
+
+    $last_onto_date = $result->{'knora-api:lastModificationDate'};
+
+    return $last_onto_date;
 }
 //=============================================================================
 
@@ -1093,6 +1124,7 @@ function process_ontology_node($project_iri, DOMnode $node) {
 
     $restype_nodes = array();
     $selections = array();
+    $hlists = array();
 
     for ($i = 0; $i < $node->childNodes->length; $i++) {
         $subnode = $node->childNodes->item($i);
@@ -1100,6 +1132,7 @@ function process_ontology_node($project_iri, DOMnode $node) {
             case 'longname': break; // we do nothing with the long vocabulary/ontology name
             case 'uri': break; // we ignore this "fake" uri...
             case 'selection': array_push($selections, $subnode); break;
+            case 'hlist': array_push($hlists, $subnode); break;
             case 'restype': array_push($restype_nodes, $subnode); break;
             default: ;
         }
@@ -1109,6 +1142,10 @@ function process_ontology_node($project_iri, DOMnode $node) {
         $selinfo = process_selection_nodes($project_iri, $selection);
     }
 
+
+    foreach ($hlists as $hlist) {
+        $hlistsinfo = process_hlist_nodes($project_iri, $hlist);
+    }
 
     foreach ($restype_nodes as $restype_node) {
         get_resclass_ids($onto_name, $restype_node);
@@ -1217,12 +1254,52 @@ function process_selection_nodes($project_iri, DOMnode $node) {
     $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
     die_on_api_error($result, __LINE__, $list);
 
-    $GLOBALS['lists'][$selection_id] = $result->list->listinfo->id;
+    $GLOBALS['selections'][$selection_id] = $result->list->listinfo->id;
 
     return $result->list->listinfo;
 }
 //=============================================================================================
 
+function process_hlist_nodes($project_iri, DOMnode $node) {
+    $attributes = process_attributes($node);
+    $hlist_name = $attributes['name'];
+    $hlist_id = $attributes['id'];
+
+    $comments = array();
+    $labels = array();
+    for ($i = 0; $i < $node->childNodes->length; $i++) {
+        $subnode = $node->childNodes->item($i);
+        switch($subnode->nodeName) {
+            case 'label': {
+                $subattributes = process_attributes($subnode);
+                $label = new stdClass();
+                $label->value = $subnode->nodeValue;
+                $label->language = $subattributes['lang'];
+                $labels[] = $label;
+                break;
+            }
+            case 'description': {
+                $subattributes = process_attributes($subnode);
+                $comment = new stdClass();
+                $comment->value = $subnode->nodeValue;
+                $comment->language = $subattributes['lang'];
+                $comments[] = $comment;
+                break;
+            }
+            case 'nodes': break;
+            default:
+        }
+    }
+    $hlist = create_list_struct($hlist_name, $project_iri, $labels, $comments);
+    $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $hlist);
+    die_on_api_error($result, __LINE__, $hlist);
+    echo 'INFO: added hlist with id=', $hlist_id, PHP_EOL;
+
+    $GLOBALS['hlists'][$hlist_id] = $result->list->listinfo->id;
+
+    return $result->list->listinfo;
+}
+//=============================================================================================
 
 $infile = NULL;
 
@@ -1241,10 +1318,7 @@ for ($i = 1; $i < $_SERVER['argc']; $i++) {
             $GLOBALS['server'] = $_SERVER['argv'][$i];
             break;
         }
-        case '-list': {
-            break;
-        }
-        default: {
+         default: {
             $infile = $_SERVER['argv'][$i];
         }
     }
