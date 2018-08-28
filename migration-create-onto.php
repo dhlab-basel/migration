@@ -1275,6 +1275,7 @@ function process_selection_nodes($project_iri, DOMnode $node) {
         }
     }
     $list = create_list_struct($selection_name, $project_iri, $labels, $comments);
+    print_r($list); die();
     $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
     die_on_api_error($result, __LINE__, $list);
 
