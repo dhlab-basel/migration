@@ -1048,11 +1048,13 @@ function process_property_node(
 
     $class_iri = $onto_name . ':' . $subject_name;
 
+    /*
     $properties_occurrences = array();
     if ($valtype == 'VALTYPE_RESPTR') {
         $property_iri = $onto_name . ':' . $prop_name . 'Value';
         $properties_occurrences[$property_iri] = $occurrence;
     }
+    */
     $property_iri = $onto_name . ':' . $prop_name;
     $properties_occurrences[$property_iri] = $occurrence;
     $cardinality = create_cardinalities_struct(
