@@ -14,6 +14,8 @@ $GLOBALS['selections'] = array();
 $GLOBALS['hlists'] = array();
 $GLOBALS['res_ids'] = array();
 $GLOBALS['properties'] = array();
+$GLOBALS['rmapping'] = array();
+$GLOBALS['pmapping'] = array();
 
 /*
  * Properties in knora-base:
@@ -494,6 +496,56 @@ function create_cardinality_struct(
 //=============================================================================
 
 
+function create_cardinalities_struct(
+    $ontology_iri,
+    $onto_name,
+    $class_iri,
+    $properties_occurrences,
+    $last_mod_date
+) {
+    $graphs = array();
+    foreach ($properties_occurrences as $property_iri => $occurence) {
+        switch ($occurence) {
+            case '1': $cc1 = 'owl:cardinality'; $cc2 = 1; break;
+            case '0-1': $cc1 = 'owl:maxCardinality'; $cc2 = 1; break;
+            case '0-n': $cc1 = 'owl:minCardinality'; $cc2 = 0; break;
+            case '1-n': $cc1 = 'owl:minCardinality'; $cc2 = 1; break;
+            default: die('FATAL ERROR: Unknown cardinality: ' . $occurence);
+        }
+        $graph = (object) array(
+            '@id' => $class_iri,
+            '@type' => 'owl:Class',
+            'rdfs:subClassOf' => (object) array(
+                '@type' => 'owl:Restriction',
+                $cc1 => $cc2,
+                'owl:onProperty' => (object) array(
+                    '@id' => $property_iri
+                )
+            )
+        );
+        $graphs[] = $graph;
+    }
+
+    $cardinality = (object) array(
+        '@id' => $ontology_iri,
+        '@type' => 'owl:Ontology',
+        'knora-api:lastModificationDate' => $last_mod_date,
+        '@graph' => $graphs,
+        '@context' => (object) array(
+            'rdf' => "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+            'knora-api' => 'http://api.knora.org/ontology/knora-api/v2#',
+            'owl' => 'http://www.w3.org/2002/07/owl#',
+            'rdfs' => 'http://www.w3.org/2000/01/rdf-schema#',
+            'xsd' => 'http://www.w3.org/2001/XMLSchema#',
+            $onto_name => $ontology_iri . '#'
+        )
+    );
+
+    return $cardinality;
+}
+//=============================================================================
+
+
 function process_property_node(
     $ontology_iri,
     $onto_name,
@@ -507,6 +559,10 @@ function process_property_node(
     $prop_name = $attributes['name'];
 
     if ($prop_name == '__location__') return $last_onto_date;
+
+    if (array_key_exists($prop_name, $GLOBALS['pmapping'])) {
+        $prop_name = $GLOBALS['pmapping'][$prop_name];
+    }
 
     $labels = array();
     $valtype = NULL;
@@ -966,7 +1022,7 @@ function process_property_node(
         $ontology_iri,
         $onto_name,
         $last_onto_date,
-        $attributes['name'],
+        $prop_name,
         $super_props,
         $subject,
         $object,
@@ -977,7 +1033,7 @@ function process_property_node(
     );
 
     if (!array_key_exists($prop_voc . ':' . $prop_name,  $GLOBALS['properties'])) {
-        echo 'INFO: Adding ', $onto_name, ':', $attributes['name'], '...';
+        echo 'INFO: Adding ', $onto_name, ':', $prop_name, '...';
         $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/properties', $property);
         if (isset($result->error)) print_r($GLOBALS['properties'][$prop_voc . ':' . $prop_name]);
         die_on_api_error($result, __LINE__, $property);
@@ -986,21 +1042,27 @@ function process_property_node(
         $GLOBALS['properties'][$prop_voc . ':' . $prop_name] = $result;
     }
 
-    $property_iri = $onto_name . ':' . $attributes['name'];
+    $property_iri = $onto_name . ':' . $prop_name;
 
     echo 'INFO: Adding cardinality: ', $property_iri, PHP_EOL;
 
     $class_iri = $onto_name . ':' . $subject_name;
-    $cardinality = create_cardinality_struct(
+
+    $properties_occurrences = array();
+    if ($valtype == 'VALTYPE_RESPTR') {
+        $property_iri = $onto_name . ':' . $prop_name . 'Value';
+        $properties_occurrences[$property_iri] = $occurrence;
+    }
+    $property_iri = $onto_name . ':' . $prop_name;
+    $properties_occurrences[$property_iri] = $occurrence;
+    $cardinality = create_cardinalities_struct(
         $ontology_iri,
         $onto_name,
         $class_iri,
-        $property_iri,
-        $occurrence,
+        $properties_occurrences,
         $last_onto_date
     );
-
-
+    print_r($cardinality);
     $result = knora_post_data($GLOBALS['server'] . '/v2/ontologies/cardinalities', $cardinality);
     die_on_api_error($result, __LINE__, $property);
 
@@ -1032,6 +1094,7 @@ function process_resclass_node(
     $labels = array();
     $comments = array();
     $class_name = $attributes['name'];
+    if (array_key_exists($class_name, $GLOBALS['rmapping'])) $class_name = $GLOBALS['rmapping'][$class_name];
     $superclass = NULL;
 
     switch ($attributes['type']) {
@@ -1275,7 +1338,7 @@ function process_selection_nodes($project_iri, DOMnode $node) {
         }
     }
     $list = create_list_struct($selection_name, $project_iri, $labels, $comments);
-    print_r($list); die();
+
     $result = knora_post_data($GLOBALS['server'] . '/admin/lists', $list);
     die_on_api_error($result, __LINE__, $list);
 
@@ -1336,6 +1399,7 @@ function print_usage() {
 //=============================================================================================
 
 $GLOBALS['server'] = 'http://0.0.0.0:3333';
+$mapfile = NULL;
 for ($i = 1; $i < $_SERVER['argc']; $i++) {
     switch ($_SERVER['argv'][$i]) {
         case '-server': {
@@ -1343,7 +1407,32 @@ for ($i = 1; $i < $_SERVER['argc']; $i++) {
             $GLOBALS['server'] = $_SERVER['argv'][$i];
             break;
         }
-         default: {
+        case '-rmap': {
+            $i++;
+            $map = $_SERVER['argv'][$i];
+            $pairs = explode(':', $map);
+            foreach($pairs as $pair) {
+                list($from, $to) = explode('=', $pair);
+                $GLOBALS['rmapping'][$from] = $to;
+            }
+            break;
+        }
+        case '-pmap': {
+            $i++;
+            $map = $_SERVER['argv'][$i];
+            $pairs = explode(':', $map);
+            foreach($pairs as $pair) {
+                list($from, $to) = explode('=', $pair);
+                $GLOBALS['pmapping'][$from] = $to;
+            }
+            break;
+        }
+        case '-mapfile': {
+            $i++;
+            $mapfile = $_SERVER['argv'][$i];
+            break;
+        }
+        default: {
             $infile = $_SERVER['argv'][$i];
         }
     }
@@ -1353,6 +1442,33 @@ if (is_null($infile)) {
     print_usage();
     die();
 }
+
+if (is_null($mapfile)) {
+    $pi = pathinfo($infile);
+    $mapfile = $pi['filename'] . '_mappings.xml';
+}
+
+$GLOBALS['out'] = new XMLWriter();
+$GLOBALS['out']->openURI($mapfile);
+$GLOBALS['out']->setIndent(TRUE);
+$GLOBALS['out']->setIndentString('   ');
+$GLOBALS['out']->startDocument('1.0', 'UTF-8');
+
+$GLOBALS['out']->startElement('mapping');
+$GLOBALS['out']->writeAttribute('transfer', $infile);
+foreach ($GLOBALS['rmapping'] as $from => $to) {
+    $GLOBALS['out']->startElement('resource');
+    $GLOBALS['out']->writeAttribute('from', $from);
+    $GLOBALS['out']->writeAttribute('to', $to);
+    $GLOBALS['out']->endElement();
+}
+foreach ($GLOBALS['pmapping'] as $from => $to) {
+    $GLOBALS['out']->startElement('property');
+    $GLOBALS['out']->writeAttribute('from', $from);
+    $GLOBALS['out']->writeAttribute('to', $to);
+    $GLOBALS['out']->endElement();
+}
+
 
 //
 // Parsing the XML-Document
@@ -1371,3 +1487,19 @@ if ($doc->childNodes->length == 1) {
         }
     }
 }
+
+foreach ($GLOBALS['selections'] as $id => $iri) {
+    $GLOBALS['out']->startElement('list');
+    $GLOBALS['out']->writeAttribute('from', $id);
+    $GLOBALS['out']->writeAttribute('to', $iri);
+    $GLOBALS['out']->endElement();
+}
+foreach ($GLOBALS['hlists'] as $id => $iri) {
+    $GLOBALS['out']->startElement('list');
+    $GLOBALS['out']->writeAttribute('from', $id);
+    $GLOBALS['out']->writeAttribute('to', $iri);
+    $GLOBALS['out']->endElement();
+}
+
+$GLOBALS['out']->endElement(); // salsah
+$GLOBALS['out']->endDocument();
