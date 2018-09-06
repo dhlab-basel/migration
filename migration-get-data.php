@@ -32,14 +32,57 @@ function get_all_res_ids($project, $show_nrows = -1, $start_at = 0) {
         die('curl_exec failed for property "'.$restype.'"!'.PHP_EOL);
     }
     curl_close($cid);
+    echo '===="', $jsonstr, '"-----', PHP_EOL;
     $retdata = json_decode($jsonstr);
     if ($retdata->status != 0) {
         print_r(retdata);
         die('curl_exec failed for project  "'. $project .'"!'.PHP_EOL);
     }
 
+    print_r($retdata); die();
+
     $res_ids = array_map(function($ele) {
         return $ele['obj_id'];
     }, $retdata['subjects']);
 
+    return $res_ids;
+
 }
+//=============================================================================
+
+
+$project_name = NULL;
+$outfile = NULL;
+
+function print_usage() {
+    echo 'usage: ', $_SERVER['argv'][0], ' -project project-name xml-dump-file', PHP_EOL, PHP_EOL;
+    echo '  -project project-name: dump data from given project.', PHP_EOL;
+    echo PHP_EOL;
+}
+//=============================================================================
+
+
+for ($i = 1; $i < $_SERVER['argc']; $i++) {
+    switch ($_SERVER['argv'][$i]) {
+        case '-project': {
+            $i++;
+            $project_name = $_SERVER['argv'][$i];
+            break;
+        }
+        case '-list': {
+            break;
+        }
+        default: {
+            $outfile = $_SERVER['argv'][$i];
+        }
+    }
+}
+
+if (is_null($project_name) || is_null($outfile)) {
+    print_usage();
+    die();
+}
+
+$res_ids = get_all_res_ids($project_name);
+
+print_r ($res_ids);
